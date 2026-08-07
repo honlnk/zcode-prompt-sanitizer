@@ -1,0 +1,61 @@
+{
+  "name": "zcode-prompt-sanitizer",
+  "version": "0.1.0",
+  "description": "Local reverse proxy that rewrites sensitive prompt fragments injected by ZCode before they reach third-party API providers, preventing WAF false positives.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "zcode-prompt-sanitizer": "dist/cli.js",
+    "zps": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch src/cli.ts",
+    "start": "node dist/cli.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\""
+  },
+  "keywords": [
+    "zcode",
+    "prompt",
+    "sanitizer",
+    "proxy",
+    "waf",
+    "openai",
+    "copilot",
+    "llm"
+  ],
+  "license": "MIT",
+  "author": "honlnk",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/honlnk/zcode-prompt-sanitizer.git"
+  },
+  "homepage": "https://github.com/honlnk/zcode-prompt-sanitizer",
+  "bugs": {
+    "url": "https://github.com/honlnk/zcode-prompt-sanitizer/issues"
+  },
+  "engines": {
+    "node": ">=18.17.0"
+  },
+  "files": [
+    "dist",
+    "public",
+    "README.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "js-yaml": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.10.0",
+    "prettier": "^3.4.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}
