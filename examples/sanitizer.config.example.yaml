@@ -1,0 +1,46 @@
+# zcode-prompt-sanitizer example configuration
+# Copy to sanitizer.config.yaml and edit as needed, or pass via --config.
+
+port: 18790
+host: 127.0.0.1
+verbose: false
+maxBodyBytes: 8388608   # 8 MiB
+
+dashboard:
+  enabled: true
+  port: 0               # 0 = serve on the proxy port under /__zps__
+
+# Map provider keys to their real upstream URLs. A request is routed to an
+# upstream when its `x-zps-provider` header, Authorization value, or Host
+# header matches the key (case-insensitive substring match).
+upstreams:
+  workbuddy:
+    target: https://copilot.tencent.com
+    changeHost: true
+    # headers:           # optional header overrides applied on every request
+    #   authorization: Bearer sk-your-real-key
+
+# Rewrite rules. `match` is a literal substring (NOT regex). `replacement`
+# is inserted verbatim; an empty string deletes the match.
+# Rules apply in order to the roles listed in `scopes`.
+rules:
+  - id: zcode-git-pr-hint
+    description: "Neutralize ZCode's injected git hint that triggers Tencent WAF."
+    enabled: true
+    scopes: [system]
+    match: "Main branch (you will usually use this for PRs):"
+    replacement: "Default git branch:"
+
+  - id: zcode-git-pr-hint-lowercase
+    description: "Same hint, lowercase variant used by some ZCode versions."
+    enabled: true
+    scopes: [system]
+    match: "main branch (you will usually use this for PRs):"
+    replacement: "Default git branch:"
+
+  # Example: delete an internal token from any role
+  # - id: redact-internal-token
+  #   enabled: true
+  #   scopes: [system, user]
+  #   match: "INTERNAL-TOKEN-"
+  #   replacement: ""
