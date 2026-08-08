@@ -15,7 +15,7 @@
  *   --version, -v        Print version and exit.
  *   --help, -h           Show help and exit.
  */
-import { loadConfig, resolveConfigPath } from './config/loader.js';
+import { loadConfig, resolveConfigPath, defaultConfigPath } from './config/loader.js';
 import { startServer } from './server.js';
 import { VERSION } from './config/defaults.js';
 
@@ -98,9 +98,7 @@ ENVIRONMENT
   ZPS_DASHBOARD      Set to "0" to disable dashboard
 
 CONFIG SEARCH PATH
-  ./sanitizer.config.{yaml,yml,json}
-  ./.sanitizer.config.yaml
-  ~/.zcode/sanitizer.config.yaml
+  ~/.zcode-prompt-sanitizer/config.yaml   (default)
 
 EXAMPLE
   # Start with built-in defaults (covers the known Tencent WAF trigger)
@@ -123,7 +121,9 @@ async function main(): Promise<void> {
   if (args.verbose) config.verbose = true;
   if (args.dashboard === false) config.dashboard.enabled = false;
 
-  const configPath = resolveConfigPath(args.configPath);
+  // If no config file was found, fall back to the default home-dir path so that
+  // dashboard edits still persist somewhere on the first run.
+  const configPath = resolveConfigPath(args.configPath) ?? defaultConfigPath();
   startServer(config, { configPath });
 }
 

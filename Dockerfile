@@ -49,7 +49,7 @@ VOLUME /data
 # The host's 127.0.0.1 is reached via `docker run -p 18790:18790`.
 ENV ZPS_HOST=0.0.0.0 \
     ZPS_PORT=18790 \
-    ZPS_CONFIG=/data/sanitizer.config.yaml
+    ZPS_CONFIG=/data/config.yaml
 
 # Drop privileges — no need for root in a pure-Node runtime.
 USER node
@@ -61,4 +61,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+process.env.ZPS_PORT+'/__zps__/api/status').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 ENTRYPOINT ["node", "dist/cli.js"]
-CMD ["--config", "/data/sanitizer.config.yaml"]
+CMD ["--config", "/data/config.yaml"]

@@ -12,11 +12,12 @@ test/
 .DS_Store
 
 # Config that shouldn't leak into the image (mount at runtime instead).
+config.yaml
+config.yml
+config.json
 sanitizer.config.yaml
 sanitizer.config.yml
 sanitizer.config.json
-.sanitizer.config.yaml
-sanitizer.config.local.*
 
 # Docs are not needed in the runtime image.
 # (README.md and LICENSE are intentionally NOT excluded — kept for metadata.)

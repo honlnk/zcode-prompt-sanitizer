@@ -1,7 +1,7 @@
 # docker compose up
 #
 # Runs zcode-prompt-sanitizer with a persistent config volume.
-# Put your config at ./sanitizer.config.yaml (or let the dashboard create it),
+# Put your config at ./config.yaml (or let the dashboard create it),
 # then access the proxy at http://127.0.0.1:18790 and the dashboard at
 # http://127.0.0.1:18790/__zps__.
 
@@ -15,7 +15,7 @@ services:
       - "18790:18790"
     volumes:
       # Config + any persisted rule edits live here, surviving rebuilds.
-      - ./sanitizer.config.yaml:/data/sanitizer.config.yaml
+      - ./config.yaml:/data/config.yaml
       # Alternative: mount a whole dir if you prefer.
       # - ./data:/data
     environment:

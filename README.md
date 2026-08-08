@@ -64,7 +64,7 @@ You'll see:
 docker compose up -d
 ```
 
-Put your config at `./sanitizer.config.yaml` next to `docker-compose.yml` (see [`examples/docker-compose.example.yml`](examples/docker-compose.example.yml)). The proxy is then reachable at `http://127.0.0.1:18790`, dashboard at `http://127.0.0.1:18790/__zps__`.
+Put your config at `./config.yaml` next to `docker-compose.yml` (see [`examples/docker-compose.example.yml`](examples/docker-compose.example.yml)). The proxy is then reachable at `http://127.0.0.1:18790`, dashboard at `http://127.0.0.1:18790/__zps__`.
 
 <details>
 <summary>Or run with plain <code>docker</code></summary>
@@ -76,7 +76,7 @@ docker build -t zcode-prompt-sanitizer .
 # Run — mount your config, map the port
 docker run -d --name zps \
   -p 18790:18790 \
-  -v "$PWD/sanitizer.config.yaml:/data/sanitizer.config.yaml" \
+  -v "$PWD/config.yaml:/data/config.yaml" \
   zcode-prompt-sanitizer
 
 # Or run with zero config (built-in defaults)
@@ -96,7 +96,7 @@ Configure your provider in ZCode to use the proxy address. Exactly how depends o
 Set the provider's base URL to the proxy, and configure an `upstream` in your sanitizer config so the proxy knows where to forward:
 
 ```yaml
-# sanitizer.config.yaml
+# ~/.zcode-prompt-sanitizer/config.yaml
 upstreams:
   workbuddy:
     target: https://copilot.tencent.com
@@ -119,16 +119,14 @@ The proxy loads config from the first of these it finds:
 
 1. `--config <path>` CLI flag
 2. `ZPS_CONFIG` env var
-3. `./sanitizer.config.yaml` / `.yml` / `.json`
-4. `./.sanitizer.config.yaml`
-5. `~/.zcode/sanitizer.config.yaml`
+3. `~/.zcode-prompt-sanitizer/config.yaml`
 
-If none exists, built-in defaults are used.
+If none exists, built-in defaults are used. Dashboard edits are persisted to the same path (`~/.zcode-prompt-sanitizer/config.yaml` by default, or `/data/config.yaml` in Docker).
 
 ### Full example
 
 ```yaml
-# sanitizer.config.yaml
+# ~/.zcode-prompt-sanitizer/config.yaml
 port: 18790
 host: 127.0.0.1            # always bind locally
 verbose: false

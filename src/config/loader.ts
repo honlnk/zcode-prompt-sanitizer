@@ -28,24 +28,15 @@ type RriteScope = RewriteScope;
  * Resolve the config path from, in order:
  *   1. explicit `path` argument
  *   2. ZPS_CONFIG env var
- *   3. well-known locations in CWD / home dir
+ *   3. ~/.zcode-prompt-sanitizer/config.yaml (unified home-dir location)
  * Returns null when no file is found — callers should then use defaults.
  */
 export function resolveConfigPath(explicit?: string): string | null {
+  const home = process.env.HOME ?? process.env.USERPROFILE ?? '~';
   const candidates: string[] = [];
   if (explicit) candidates.push(resolve(explicit));
   if (process.env.ZPS_CONFIG) candidates.push(resolve(process.env.ZPS_CONFIG));
-  candidates.push(
-    resolve(process.cwd(), 'sanitizer.config.yaml'),
-    resolve(process.cwd(), 'sanitizer.config.yml'),
-    resolve(process.cwd(), 'sanitizer.config.json'),
-    resolve(process.cwd(), '.sanitizer.config.yaml'),
-    resolve(
-      process.env.HOME ?? process.env.USERPROFILE ?? '~',
-      '.zcode',
-      'sanitizer.config.yaml',
-    ),
-  );
+  candidates.push(resolve(home, '.zcode-prompt-sanitizer', 'config.yaml'));
 
   for (const c of candidates) {
     try {
@@ -56,6 +47,15 @@ export function resolveConfigPath(explicit?: string): string | null {
     }
   }
   return null;
+}
+
+/**
+ * The default config path under the home directory. Used as the fallback when
+ * no config exists yet — the dashboard writes rule edits here.
+ */
+export function defaultConfigPath(): string {
+  const home = process.env.HOME ?? process.env.USERPROFILE ?? '~';
+  return resolve(home, '.zcode-prompt-sanitizer', 'config.yaml');
 }
 
 /**

@@ -6,7 +6,7 @@
 export { Sanitizer, type RewriteResult } from './sanitizer.js';
 export { createProxyServer, type RequestInfo, type ProxyDeps } from './proxy.js';
 export { startServer, waitForListening, type RunningServer, type StartOptions } from './server.js';
-export { loadConfig, resolveConfigPath, validateRules, ConfigError } from './config/loader.js';
+export { loadConfig, resolveConfigPath, defaultConfigPath, validateRules, ConfigError } from './config/loader.js';
 export { persistConfig } from './config/persist.js';
 export { createDefaultConfig, BUILTIN_RULES, VERSION } from './config/defaults.js';
 export type {
