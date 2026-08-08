@@ -1,0 +1,76 @@
+# 构建并发布 Docker 镜像。
+# 当推送 v* 标签时触发，构建多架构镜像并发布到 Docker Hub。
+# 同时在 master 分支推送时构建 latest 标签。
+
+name: Release Docker
+
+on:
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - master
+    paths:
+      - 'src/**'
+      - 'Dockerfile'
+      - 'package.json'
+      - 'package-lock.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract version from tag
+        id: version
+        uses: actions/github-script@v7
+        with:
+          result-encoding: string
+          script: |
+            const ref = context.ref;
+            if (ref.startsWith('refs/tags/v')) {
+              const tag = ref.replace('refs/tags/v', '');
+              core.setOutput('tag', tag);
+              core.setOutput('latest', 'true');
+            } else {
+              // master branch push — build as latest only
+              core.setOutput('tag', '');
+              core.setOutput('latest', 'true');
+            }
+
+      - name: Generate tags
+        id: tags
+        run: |
+          IMAGE="honlnk/zcode-prompt-sanitizer"
+          TAGS="${IMAGE}:latest"
+          if [ -n "${{ steps.version.outputs.tag }}" ]; then
+            TAGS="${TAGS},${IMAGE}:${{ steps.version.outputs.tag }}"
+          fi
+          echo "tags=$TAGS" >> $GITHUB_OUTPUT
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

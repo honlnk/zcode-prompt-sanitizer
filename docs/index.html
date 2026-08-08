@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>zcode-prompt-sanitizer · ZCode WAF 误拦截本地代理</title>
+  <meta name="description" content="一个本地反向代理，在请求到达第三方 API 供应商之前改写 ZCode 自动注入的 git 上下文等触发 WAF 误拦截的 prompt 片段，让 ZCode 接入任意供应商时不被内容审查误拦。" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%230969DA'/%3E%3Cpath d='M32 9 50 16V30c0 11-7.5 19.5-18 23C21.5 49.5 14 41 14 30V16L32 9Z' fill='none' stroke='white' stroke-width='4' stroke-linejoin='round'/%3E%3Cpath d='M24 22h16l-3 7v3a3 3 0 0 1-3 3h-4a3 3 0 0 1-3-3v-3l-3-7Z' fill='none' stroke='white' stroke-width='3' stroke-linejoin='round'/%3E%3Cpath d='M28 35h8M30 39h4' fill='none' stroke='white' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E" />
+  <style>
+    :root {
+      --bg: #ffffff;
+      --bg-soft: #f7f8fa;
+      --bg-code: #f3f4f6;
+      --border: #e5e7eb;
+      --text: #1f2328;
+      --text-soft: #57606a;
+      --text-muted: #8b949e;
+      --accent: #0969da;
+      --accent-soft: #ddf4ff;
+      --green: #1a7f37;
+      --green-soft: #dafbe1;
+      --orange: #bc4c00;
+      --orange-soft: #fff1e5;
+      --purple: #6f4ed1;
+      --purple-soft: #f1e8ff;
+      --red: #cf222e;
+      --red-soft: #ffebe9;
+      --shadow: 0 1px 3px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.04);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0d1117;
+        --bg-soft: #161b22;
+        --bg-code: #1c2128;
+        --border: #30363d;
+        --text: #e6edf3;
+        --text-soft: #9198a1;
+        --text-muted: #6e7681;
+        --accent: #58a6ff;
+        --accent-soft: #1f6feb22;
+        --green: #3fb950;
+        --green-soft: #3fb95022;
+        --orange: #db6d28;
+        --orange-soft: #db6d2822;
+        --purple: #a371f7;
+        --purple-soft: #6f4ed122;
+        --red: #f85149;
+        --red-soft: #f8514922;
+        --shadow: 0 1px 3px rgba(0,0,0,0.3), 0 8px 24px rgba(0,0,0,0.3);
+      }
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      font-size: 16px;
+      line-height: 1.7;
+      color: var(--text);
+      background: var(--bg);
+      -webkit-font-smoothing: antialiased;
+    }
+    code, pre, .mono {
+      font-family: "SFMono-Regular", "JetBrains Mono", Consolas, "Liberation Mono", Menlo, monospace;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .container { max-width: 920px; margin: 0 auto; padding: 0 24px; }
+
+    /* Header */
+    header {
+      position: sticky; top: 0; z-index: 10;
+      background: color-mix(in srgb, var(--bg) 85%, transparent);
+      backdrop-filter: saturate(180%) blur(12px);
+      -webkit-backdrop-filter: saturate(180%) blur(12px);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav { display: flex; align-items: center; justify-content: space-between; height: 56px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; color: var(--text); }
+    .brand-logo { width: 28px; height: 28px; display: block; }
+    .nav-links { display: flex; gap: 8px; align-items: center; }
+    .nav-links a {
+      color: var(--text-soft); font-size: 14px; padding: 6px 12px;
+      border-radius: 6px; transition: all .15s;
+    }
+    .nav-links a:hover { background: var(--bg-soft); color: var(--text); text-decoration: none; }
+    .btn-github {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: var(--bg-soft); border: 1px solid var(--border);
+      padding: 6px 14px; border-radius: 6px; font-size: 13px; color: var(--text);
+    }
+    .btn-github:hover { background: var(--bg-code); text-decoration: none; }
+
+    /* Hero */
+    .hero { padding: 80px 0 60px; text-align: center; }
+    .hero-badge {
+      display: inline-block; padding: 4px 12px; border-radius: 999px;
+      background: var(--accent-soft); color: var(--accent);
+      font-size: 13px; font-weight: 500; margin-bottom: 24px;
+    }
+    .hero h1 {
+      font-size: 48px; font-weight: 800; letter-spacing: -0.02em;
+      margin: 0 0 16px; line-height: 1.15;
+    }
+    .hero h1 .grad {
+      background: linear-gradient(135deg, var(--accent), var(--purple));
+      -webkit-background-clip: text; background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .hero p { font-size: 20px; color: var(--text-soft); max-width: 640px; margin: 0 auto 32px; }
+    .hero-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 12px 24px; border-radius: 8px; font-weight: 600; font-size: 15px;
+      transition: all .15s; cursor: pointer; border: 1px solid transparent;
+    }
+    .btn-primary { background: var(--accent); color: white; }
+    .btn-primary:hover { background: var(--accent); filter: brightness(1.1); text-decoration: none; }
+    .btn-secondary { background: var(--bg-soft); color: var(--text); border-color: var(--border); }
+    .btn-secondary:hover { background: var(--bg-code); text-decoration: none; }
+
+    .install-cmd {
+      display: inline-flex; align-items: center; gap: 12px;
+      background: var(--bg-code); border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 16px; margin-top: 8px;
+      font-size: 14px; color: var(--text);
+    }
+    .install-cmd code { background: transparent; padding: 0; color: var(--text); }
+    .install-cmd .prompt { color: var(--green); user-select: none; }
+
+    /* Sections */
+    section { padding: 56px 0; border-top: 1px solid var(--border); }
+    .section-title {
+      font-size: 14px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--accent); margin: 0 0 8px;
+    }
+    .section-desc { color: var(--text-soft); font-size: 16px; margin: 0 0 32px; max-width: 720px; }
+    h2 { font-size: 32px; font-weight: 700; letter-spacing: -0.01em; margin: 0 0 8px; }
+    h3 { font-size: 20px; font-weight: 600; margin: 32px 0 12px; }
+    h4 { font-size: 16px; font-weight: 600; margin: 24px 0 8px; }
+    p { margin: 12px 0; }
+
+    /* Problem diagram */
+    .diagram {
+      background: var(--bg-soft); border: 1px solid var(--border);
+      border-radius: 12px; padding: 28px; margin: 20px 0;
+      font-family: "SFMono-Regular", "JetBrains Mono", Consolas, monospace;
+      font-size: 14px; line-height: 2; overflow-x: auto;
+    }
+    .diagram .label-bad { color: var(--red); font-weight: 600; }
+    .diagram .label-good { color: var(--green); font-weight: 600; }
+    .diagram .label-muted { color: var(--text-muted); }
+    .diagram .arrow { color: var(--text-muted); }
+
+    /* Feature cards */
+    .feature-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    @media (max-width: 720px) { .feature-grid { grid-template-columns: 1fr; } }
+    .feature-card {
+      background: var(--bg-soft); border: 1px solid var(--border);
+      border-radius: 12px; padding: 20px; transition: all .2s;
+    }
+    .feature-card:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+    .feature-card .icon { font-size: 28px; margin-bottom: 8px; }
+    .feature-card h4 { margin: 0 0 6px; font-size: 15px; }
+    .feature-card p { margin: 0; font-size: 13px; color: var(--text-soft); }
+
+    /* Rule showcase */
+    .rule-showcase {
+      background: var(--bg-soft); border: 1px solid var(--border);
+      border-radius: 12px; padding: 24px; margin: 16px 0;
+    }
+    .rule-item {
+      display: flex; align-items: center; gap: 12px; padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .rule-item:last-child { border-bottom: 0; }
+    .rule-tag {
+      font-family: "SFMono-Regular", monospace; font-size: 12px; font-weight: 600;
+      padding: 2px 8px; border-radius: 4px; flex-shrink: 0;
+    }
+    .rule-tag.before { background: var(--red-soft); color: var(--red); }
+    .rule-tag.after { background: var(--green-soft); color: var(--green); }
+    .rule-arrow { color: var(--text-muted); flex-shrink: 0; }
+    .rule-text { font-family: "SFMono-Regular", monospace; font-size: 13px; color: var(--text); }
+
+    /* Code block */
+    pre {
+      background: var(--bg-code); border: 1px solid var(--border);
+      border-radius: 8px; padding: 16px 18px; overflow-x: auto;
+      font-size: 13.5px; line-height: 1.6; margin: 16px 0;
+    }
+    pre code { background: transparent; padding: 0; color: var(--text); }
+    code:not(pre code) { background: var(--bg-code); padding: 2px 6px; border-radius: 4px; font-size: 0.9em; color: var(--text); }
+
+    /* Callout */
+    .callout {
+      padding: 16px 20px; border-radius: 8px; margin: 20px 0;
+      font-size: 14px; border: 1px solid;
+    }
+    .callout-info { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+    .callout-warn { background: var(--orange-soft); border-color: color-mix(in srgb, var(--orange) 30%, transparent); }
+    .callout-success { background: var(--green-soft); border-color: color-mix(in srgb, var(--green) 30%, transparent); }
+    .callout strong { color: var(--text); }
+
+    /* Table */
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px; }
+    th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+    th { font-weight: 600; color: var(--text); background: var(--bg-soft); }
+    td code { font-size: 13px; }
+
+    /* Tabs */
+    .tabs { margin: 16px 0; }
+    .tab-headers { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 0; }
+    .tab-headers button {
+      background: none; border: none; cursor: pointer;
+      padding: 10px 16px; font-size: 14px; font-weight: 500;
+      color: var(--text-soft); border-bottom: 2px solid transparent;
+      margin-bottom: -1px; font-family: inherit;
+    }
+    .tab-headers button.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .tab-headers button:hover { color: var(--text); }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+    .tab-panel pre { margin-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
+
+    ul.feature-list { padding-left: 20px; margin: 12px 0; }
+    ul.feature-list li { margin: 6px 0; }
+
+    /* Footer */
+    footer { border-top: 1px solid var(--border); padding: 40px 0; text-align: center; color: var(--text-muted); font-size: 14px; }
+    footer a { color: var(--text-soft); }
+
+    @media (max-width: 600px) {
+      .hero { padding: 60px 0 40px; }
+      .hero h1 { font-size: 36px; }
+      .hero p { font-size: 17px; }
+      h2 { font-size: 26px; }
+      .nav-links a:not(.btn-github) { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="container nav">
+      <a href="/" class="brand">
+        <img class="brand-logo" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%230969DA'/%3E%3Cpath d='M32 9 50 16V30c0 11-7.5 19.5-18 23C21.5 49.5 14 41 14 30V16L32 9Z' fill='none' stroke='white' stroke-width='4' stroke-linejoin='round'/%3E%3Cpath d='M24 22h16l-3 7v3a3 3 0 0 1-3 3h-4a3 3 0 0 1-3-3v-3l-3-7Z' fill='none' stroke='white' stroke-width='3' stroke-linejoin='round'/%3E%3Cpath d='M28 35h8M30 39h4' fill='none' stroke='white' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E" alt="zcode-prompt-sanitizer" />
+        <span>zcode-prompt-sanitizer</span>
+      </a>
+      <nav class="nav-links">
+        <a href="#problem">问题</a>
+        <a href="#solution">方案</a>
+        <a href="#rules">规则</a>
+        <a href="#usage">使用</a>
+        <a href="https://github.com/honlnk/zcode-prompt-sanitizer" class="btn-github" target="_blank" rel="noopener">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          GitHub
+        </a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Hero -->
+  <div class="container hero">
+    <span class="hero-badge">本地代理 · 开源 · 零侵入</span>
+    <h1>让 ZCode <span class="grad">不再被 WAF 误拦</span></h1>
+    <p>一个本地反向代理，在请求到达第三方 API 供应商之前，<strong>自动改写</strong> ZCode 注入的 git 上下文等触发内容审查的 prompt 片段。改写规则完全可配置，SSE 流式透传，自带可视化管理台。</p>
+    <div class="install-cmd">
+      <span class="prompt">$</span>
+      <code>npx zcode-prompt-sanitizer</code>
+    </div>
+    <div class="hero-actions" style="margin-top: 24px;">
+      <a href="#usage" class="btn btn-primary">快速开始</a>
+      <a href="#problem" class="btn btn-secondary">了解问题</a>
+      <a href="https://github.com/honlnk/zcode-prompt-sanitizer" class="btn btn-secondary" target="_blank" rel="noopener">查看源码</a>
+    </div>
+  </div>
+
+  <!-- Problem -->
+  <section id="problem">
+    <div class="container">
+      <p class="section-title">问题</p>
+      <h2>WAF 误拦截是什么？</h2>
+      <p class="section-desc">当你在 ZCode 中使用第三方 API 供应商（如腾讯 Copilot / WorkBuddy）时，<strong>在 git 项目里发任何消息都会被拦截</strong>，返回"检测到敏感内容"。这不是你的内容有问题——是 WAF 的误报。</p>
+
+      <div class="diagram">
+        <span class="label-muted">ZCode 在 git 项目中自动注入 system prompt：</span><br>
+        <span class="label-bad">│ "Main branch (you will usually use this for PRs): master"</span><br>
+        <span class="label-muted">│</span><br>
+        <span class="label-muted">ZCode</span> <span class="arrow">──►</span> <span class="label-bad">第三方 WAF</span> <span class="arrow">──✕──</span> 模型<br>
+        <span class="label-muted">│</span> &nbsp;&nbsp;&nbsp;&nbsp; <span class="label-muted">"you will usually use this for PRs"</span> 被误判为 prompt 注入<br>
+        <span class="label-muted">│</span> &nbsp;&nbsp;&nbsp;&nbsp; <span class="label-muted">请求被直接拦截，模型根本没处理（tokens = 0）</span>
+      </div>
+
+      <div class="callout callout-warn">
+        <strong>根因：</strong>ZCode 每次请求前在内存里把 git 上下文拼进 system prompt。腾讯 WAF 对 <code>"you will usually use this for PRs"</code> 做了模式匹配，误判为越狱语句。跨 6 个 git 项目、2 个不同模型全部复现。
+      </div>
+
+      <h3>排查路径</h3>
+      <ul class="feature-list">
+        <li>查 ZCode SQLite 数据库 <code>part</code> 表 → 被拦请求 <code>tokens = 0</code>，说明网关层直接拒答</li>
+        <li>读 <code>~/.zcode/cli/rollout/*.jsonl</code> → 用户只输入"你好"，实际发出的 prompt 有 8000+ 字符</li>
+        <li>用完整请求体做 <strong>curl 二分重放</strong> → 精准锁定触发语句</li>
+        <li>全局搜索源码 → 找到 ZCode 硬编码的 <code>MAIN_BRANCH_LABEL</code> 常量</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- Solution -->
+  <section id="solution">
+    <div class="container">
+      <p class="section-title">方案</p>
+      <h2>本地代理 · 自动改写 · 流式透传</h2>
+      <p class="section-desc">zcode-prompt-sanitizer 运行在 ZCode 和供应商之间，拦截请求、改写触发词、转发到真实上游——模型仍然能看到分支名，WAF 不再触发。</p>
+
+      <div class="diagram">
+        <span class="label-muted">ZCode</span> <span class="arrow">──►</span> [<span class="label-good">sanitizer :18790</span>] <span class="arrow">──►</span> 供应商 (copilot.tencent.com)<br>
+        <span class="label-muted">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span> <span class="label-muted">│</span><br>
+        <span class="label-muted">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span> <span class="label-muted">├─ 解析 JSON 请求体</span><br>
+        <span class="label-muted">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span> <span class="label-muted">├─ 对 system 消息做精确字符串替换</span><br>
+        <span class="label-muted">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span> <span class="label-muted">├─ 重建请求体并转发</span><br>
+        <span class="label-muted">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span> <span class="label-good">└─ SSE 响应逐 chunk 透传，不缓冲</span>
+      </div>
+
+      <h3>核心特性</h3>
+      <div class="feature-grid">
+        <div class="feature-card">
+          <div class="icon">🛡️</div>
+          <h4>精确改写</h4>
+          <p>纯字符串匹配（非正则），只改 system 角色内容，不误改用户消息。可配置 scopes 扩展到其他角色。</p>
+        </div>
+        <div class="feature-card">
+          <div class="icon">⚡</div>
+          <h4>SSE 流式透传</h4>
+          <p>响应用 pipe 逐 chunk 流式转发，不缓冲完整响应。流式模型输出保持实时。</p>
+        </div>
+        <div class="feature-card">
+          <div class="icon">🎛️</div>
+          <h4>可视化管理台</h4>
+          <p>自带 Dashboard 网页，实时查看匹配统计，在线增删改规则，改动即时生效并持久化。</p>
+        </div>
+        <div class="feature-card">
+          <div class="icon">⚙️</div>
+          <h4>规则可配置</h4>
+          <p>YAML 配置文件定义匹配/替换规则，不硬编码。内置默认规则覆盖已知触发词。</p>
+        </div>
+        <div class="feature-card">
+          <div class="icon">🐳</div>
+          <h4>双部署方式</h4>
+          <p>npm 全局安装或 Docker 容器部署，配置统一存放在 <code>~/.zcode-prompt-sanitizer/</code>。</p>
+        </div>
+        <div class="feature-card">
+          <div class="icon">🔒</div>
+          <h4>只绑本地</h4>
+          <p>默认绑定 127.0.0.1，纯本地工具不暴露到网络。管理台不做鉴权，不过度设计。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Rules -->
+  <section id="rules">
+    <div class="container">
+      <p class="section-title">规则</p>
+      <h2>改写规则</h2>
+      <p class="section-desc">规则是纯字符串匹配——在 system 消息内容中搜索 <code>match</code> 子串，替换为 <code>replacement</code>。所有匹配项都会被替换，规则按顺序执行可链式生效。</p>
+
+      <h3>内置默认规则</h3>
+      <div class="rule-showcase">
+        <div class="rule-item">
+          <span class="rule-tag before">触发</span>
+          <span class="rule-text">Main branch (you will usually use this for PRs):</span>
+          <span class="rule-arrow">→</span>
+          <span class="rule-tag after">安全</span>
+          <span class="rule-text">Default git branch:</span>
+        </div>
+        <div class="rule-item">
+          <span class="rule-tag before">触发</span>
+          <span class="rule-text">main branch (you will usually use this for PRs):</span>
+          <span class="rule-arrow">→</span>
+          <span class="rule-tag after">安全</span>
+          <span class="rule-text">Default git branch:</span>
+        </div>
+      </div>
+
+      <div class="callout callout-info">
+        <strong>模型仍能看到分支名：</strong>改写后 <code>Default git branch: master</code> 保留了分支信息，只是去掉了触发 WAF 的句式。功能不受影响。
+      </div>
+
+      <h3>自定义规则示例</h3>
+      <pre><code># ~/.zcode-prompt-sanitizer/config.yaml
+rules:
+  - id: redact-internal-token
+    enabled: true
+    scopes: [system, user]
+    match: "INTERNAL-TOKEN-"
+    replacement: ""           # 空字符串 = 删除匹配项
+
+  - id: custom-waf-trigger
+    enabled: true
+    scopes: [system]
+    match: "某些触发WAF的句子"
+    replacement: "安全的表述"</code></pre>
+
+      <table>
+        <thead>
+          <tr><th>字段</th><th>必填</th><th>说明</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>id</code></td><td>是</td><td>唯一标识，用于统计/日志</td></tr>
+          <tr><td><code>match</code></td><td>是</td><td>要匹配的字面量子串（非正则）</td></tr>
+          <tr><td><code>replacement</code></td><td>否</td><td>替换文本，空字符串表示删除</td></tr>
+          <tr><td><code>scopes</code></td><td>否</td><td>作用角色，默认 <code>["system"]</code></td></tr>
+          <tr><td><code>enabled</code></td><td>否</td><td>是否启用，默认 <code>true</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Usage -->
+  <section id="usage">
+    <div class="container">
+      <p class="section-title">使用</p>
+      <h2>三步接入</h2>
+      <p class="section-desc">需要 Node.js ≥ 18。无需克隆仓库，开箱即用。</p>
+
+      <h3>1. 安装并启动代理</h3>
+      <div class="tabs">
+        <div class="tab-headers">
+          <button class="active" data-tab="npm">npm</button>
+          <button data-tab="docker">Docker</button>
+        </div>
+        <div class="tab-panel active" id="tab-npm">
+          <pre><code># 全局安装
+npm install -g zcode-prompt-sanitizer
+
+# 启动（内置默认规则，开箱即用）
+zps
+
+# 或临时运行
+npx zcode-prompt-sanitizer</code></pre>
+        </div>
+        <div class="tab-panel" id="tab-docker">
+          <pre><code># docker compose
+docker compose up -d
+
+# 或纯 docker
+docker run -d --name zps \
+  -p 18790:18790 \
+  -v "$PWD/config.yaml:/data/config.yaml" \
+  honlnk/zcode-prompt-sanitizer</code></pre>
+        </div>
+      </div>
+
+      <h3>2. 创建配置文件</h3>
+      <pre><code># ~/.zcode-prompt-sanitizer/config.yaml
+port: 18790
+host: 127.0.0.1
+
+upstreams:
+  # 把请求转发到腾讯 Copilot（唯一的 upstream 会自动路由，无需额外 header）
+  workbuddy:
+    target: https://copilot.tencent.com/v2
+    changeHost: true</code></pre>
+
+      <h3>3. 修改 ZCode 的 provider 地址</h3>
+      <p>在 ZCode 设置里，把供应商的 Base URL 从真实地址改成代理地址：</p>
+      <div class="callout callout-info" style="font-family: 'SFMono-Regular', monospace; font-size: 13px;">
+        <strong>改之前：</strong><code>https://copilot.tencent.com/v2</code><br>
+        <strong>改之后：</strong><code>http://127.0.0.1:18790/v2</code><br>
+        <strong>API Key 不变。</strong>
+      </div>
+
+      <div class="callout callout-success">
+        <strong>完成！</strong>现在 ZCode 的请求会先经过代理改写触发词，再转发到腾讯。在 <code>http://127.0.0.1:18790/__zps__</code> 可以打开管理台查看实时匹配统计。
+      </div>
+
+      <h3>CLI 参数</h3>
+      <table>
+        <thead><tr><th>参数</th><th>环境变量</th><th>默认值</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td><code>--config &lt;path&gt;</code></td><td><code>ZPS_CONFIG</code></td><td>—</td><td>配置文件路径</td></tr>
+          <tr><td><code>--port &lt;n&gt;</code></td><td><code>ZPS_PORT</code></td><td><code>18790</code></td><td>监听端口</td></tr>
+          <tr><td><code>--host &lt;addr&gt;</code></td><td><code>ZPS_HOST</code></td><td><code>127.0.0.1</code></td><td>绑定地址</td></tr>
+          <tr><td><code>--verbose</code></td><td><code>ZPS_VERBOSE=1</code></td><td>关</td><td>打印每个请求的日志</td></tr>
+          <tr><td><code>--no-dashboard</code></td><td><code>ZPS_DASHBOARD=0</code></td><td>开</td><td>关闭管理台</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>
+    <div class="container">
+      <p>
+        <a href="https://github.com/honlnk/zcode-prompt-sanitizer" target="_blank" rel="noopener">GitHub</a>
+        &nbsp;·&nbsp;
+        <a href="https://www.npmjs.com/package/zcode-prompt-sanitizer" target="_blank" rel="noopener">npm</a>
+        &nbsp;·&nbsp;
+        <a href="https://hub.docker.com/r/honlnk/zcode-prompt-sanitizer" target="_blank" rel="noopener">Docker Hub</a>
+        &nbsp;·&nbsp;
+        <a href="https://github.com/honlnk/zcode-prompt-sanitizer/issues" target="_blank" rel="noopener">问题反馈</a>
+      </p>
+      <p style="margin-top: 12px; font-size: 13px;">zcode-prompt-sanitizer · 开源本地代理 · MIT</p>
+    </div>
+  </footer>
+
+  <script>
+    document.querySelectorAll('.tab-headers button').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var tab = this.getAttribute('data-tab');
+        this.parentElement.querySelectorAll('button').forEach(function(b) { b.classList.remove('active'); });
+        this.classList.add('active');
+        document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
+        document.getElementById('tab-' + tab).classList.add('active');
+      });
+    });
+  </script>
+</body>
+</html>
