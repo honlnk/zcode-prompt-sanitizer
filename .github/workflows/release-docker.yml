@@ -1,6 +1,13 @@
-# 构建并发布 Docker 镜像。
-# 当推送 v* 标签时触发，构建多架构镜像并发布到 Docker Hub。
-# 同时在 master 分支推送时构建 latest 标签。
+# 构建并发布 Docker 镜像到 Docker Hub。
+#
+# 多架构构建策略（参考 gpt-image-studio 项目验证过的方案）：
+# 不使用 QEMU 模拟（arm64 上跑 npm install 极慢/可能卡死），
+# 而是用 GitHub 原生 arm64 runner + docker merge 合并 manifest。
+#
+# 触发：
+#   - push tag v*     → 发布版本号 + latest
+#   - push to master  → 发布 latest（仅 src/Dockerfile 变更时）
+#   - workflow_dispatch
 
 name: Release Docker
 
@@ -20,15 +27,25 @@ on:
 
 permissions:
   contents: read
+  packages: write
 
 jobs:
-  build-and-push:
-    runs-on: ubuntu-latest
+  # ─────────────────────────────────────────────────────────────────────
+  # Job 1: 单架构构建（每个平台一个 native runner，不走 QEMU）
+  # ─────────────────────────────────────────────────────────────────────
+  build:
+    name: Build (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -39,39 +56,105 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Extract version from tag
-        id: version
-        uses: actions/github-script@v7
+      - name: Extract metadata
+        id: meta
+        run: |
+          IMAGE="honlnk/zcode-prompt-sanitizer"
+          PLATFORM_TAG=$(echo "${{ matrix.platform }}" | sed 's|/|-|g')
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION="${{ github.ref_name }}"
+            echo "tags=${IMAGE}:${VERSION}-${PLATFORM_TAG},${IMAGE}:latest-${PLATFORM_TAG}" >> $GITHUB_OUTPUT
+          else
+            echo "tags=${IMAGE}:latest-${PLATFORM_TAG}" >> $GITHUB_OUTPUT
+          fi
+          echo "platform=${{ matrix.platform }}" >> $GITHUB_OUTPUT
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
         with:
-          result-encoding: string
-          script: |
-            const ref = context.ref;
-            if (ref.startsWith('refs/tags/v')) {
-              const tag = ref.replace('refs/tags/v', '');
-              core.setOutput('tag', tag);
-              core.setOutput('latest', 'true');
-            } else {
-              // master branch push — build as latest only
-              core.setOutput('tag', '');
-              core.setOutput('latest', 'true');
-            }
+          context: .
+          platforms: ${{ matrix.platform }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          outputs: type=image,push-by-digest=true,name-canonical=true,push=true
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          platform="${{ matrix.platform }}"
+          touch "/tmp/digests/${platform//\//-}"
+          echo "${digest}" > "/tmp/digests/${platform//\//-}"
+
+      - name: Upload digest artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.platform == 'linux/amd64' && 'amd64' || 'arm64' }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Job 2: 合并多架构 manifest
+  # ─────────────────────────────────────────────────────────────────────
+  merge:
+    name: Merge manifest
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Download all digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digest-*
+          merge-multiple: true
 
       - name: Generate tags
         id: tags
         run: |
           IMAGE="honlnk/zcode-prompt-sanitizer"
           TAGS="${IMAGE}:latest"
-          if [ -n "${{ steps.version.outputs.tag }}" ]; then
-            TAGS="${TAGS},${IMAGE}:${{ steps.version.outputs.tag }}"
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION="${{ github.ref_name }}"
+            TAGS="${TAGS},${IMAGE}:${VERSION}"
           fi
-          echo "tags=$TAGS" >> $GITHUB_OUTPUT
+          echo "tags=${TAGS}" >> $GITHUB_OUTPUT
 
-      - name: Build and push
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.tags.outputs.tags }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Create manifest list and push
+        working-directory: /tmp/digests
+        env:
+          DOCKER_CLI_EXPERIMENTAL: enabled
+          IMAGE: honlnk/zcode-prompt-sanitizer
+          TAGS: ${{ steps.tags.outputs.tags }}
+        run: |
+          # Read digests
+          AMD64_DIGEST=$(cat linux-amd64)
+          ARM64_DIGEST=$(cat linux-arm64)
+
+          # Split tags and push manifest for each
+          IFS=',' read -ra TAG_LIST <<< "$TAGS"
+          for TAG in "${TAG_LIST[@]}"; do
+            docker buildx imagetools create \
+              -t "$TAG" \
+              "${IMAGE}@${AMD64_DIGEST}" \
+              "${IMAGE}@${ARM64_DIGEST}"
+            echo "✓ Pushed manifest: $TAG"
+          done
+
+      - name: Inspect manifest
+        run: |
+          docker buildx imagetools inspect "honlnk/zcode-prompt-sanitizer:latest" || true
