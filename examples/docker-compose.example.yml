@@ -1,0 +1,38 @@
+# Example sanitizer config for Docker deployments.
+# Copy to ./sanitizer.config.yaml next to your docker-compose.yml.
+#
+# Inside the container the proxy binds 0.0.0.0 (set via ZPS_HOST env in the
+# Dockerfile). The host port is mapped in docker-compose.yml, so from your
+# machine you always reach the proxy at http://127.0.0.1:18790.
+
+port: 18790
+host: 0.0.0.0          # must be 0.0.0.0 inside a container, NOT 127.0.0.1
+verbose: false
+maxBodyBytes: 8388608  # 8 MiB
+
+dashboard:
+  enabled: true
+  port: 0              # 0 = serve on the proxy port under /__zps__
+
+upstreams:
+  # Example: forward sanitized requests to Tencent Copilot.
+  # Route requests by sending header `x-zps-provider: workbuddy` from ZCode.
+  workbuddy:
+    target: https://copilot.tencent.com
+    changeHost: true
+
+rules:
+  # Built-in rules are included by default when no `rules:` key is present.
+  # Uncomment to customize — providing any rules fully replaces the defaults.
+  #
+  # - id: zcode-git-pr-hint
+  #   enabled: true
+  #   scopes: [system]
+  #   match: "Main branch (you will usually use this for PRs):"
+  #   replacement: "Default git branch:"
+  #
+  # - id: zcode-git-pr-hint-lowercase
+  #   enabled: true
+  #   scopes: [system]
+  #   match: "main branch (you will usually use this for PRs):"
+  #   replacement: "Default git branch:"

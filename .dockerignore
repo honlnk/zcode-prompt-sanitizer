@@ -1,0 +1,25 @@
+# Build artifacts — the image builds these inside the container.
+dist/
+node_modules/
+
+# Tests and dev-only files.
+test/
+.git/
+.gitignore
+.prettierrc.json
+.vscode/
+.idea/
+.DS_Store
+
+# Config that shouldn't leak into the image (mount at runtime instead).
+sanitizer.config.yaml
+sanitizer.config.yml
+sanitizer.config.json
+.sanitizer.config.yaml
+sanitizer.config.local.*
+
+# Docs are not needed in the runtime image.
+# (README.md and LICENSE are intentionally NOT excluded — kept for metadata.)
+*.md
+!README.md
+!LICENSE

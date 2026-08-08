@@ -1,0 +1,31 @@
+# docker compose up
+#
+# Runs zcode-prompt-sanitizer with a persistent config volume.
+# Put your config at ./sanitizer.config.yaml (or let the dashboard create it),
+# then access the proxy at http://127.0.0.1:18790 and the dashboard at
+# http://127.0.0.1:18790/__zps__.
+
+services:
+  sanitizer:
+    build: .
+    image: zcode-prompt-sanitizer:latest
+    container_name: zcode-prompt-sanitizer
+    restart: unless-stopped
+    ports:
+      - "18790:18790"
+    volumes:
+      # Config + any persisted rule edits live here, surviving rebuilds.
+      - ./sanitizer.config.yaml:/data/sanitizer.config.yaml
+      # Alternative: mount a whole dir if you prefer.
+      # - ./data:/data
+    environment:
+      - ZPS_HOST=0.0.0.0
+      - ZPS_PORT=18790
+      # Verbose logging off by default; flip to "1" to debug.
+      - ZPS_VERBOSE=0
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:18790/__zps__/api/status').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
