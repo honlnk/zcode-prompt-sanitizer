@@ -267,8 +267,8 @@ export function dashboardHtml(version: string): string {
       <textarea id="rawConfig" readonly spellcheck="false"></textarea>
     </details>
     <p class="hint" style="margin-top:20px">
-      Point ZCode at <code class="accent" id="baseUrl"></code> — the proxy forwards sanitized requests to your configured upstream.
-      Edit <code>upstreams</code> in the config file to map providers.
+      将 ZCode 的 API 地址指向 <code class="accent" id="baseUrl"></code>，代理会自动改写请求中的敏感词并转发到上游。
+      在配置文件中编辑 <code>upstreams</code> 来映射不同的供应商。
     </p>
   </section>
 </main>
