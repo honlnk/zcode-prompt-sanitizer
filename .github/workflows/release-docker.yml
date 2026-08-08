@@ -56,19 +56,6 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Extract metadata
-        id: meta
-        run: |
-          IMAGE="honlnk/zcode-prompt-sanitizer"
-          PLATFORM_TAG=$(echo "${{ matrix.platform }}" | sed 's|/|-|g')
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            VERSION="${{ github.ref_name }}"
-            echo "tags=${IMAGE}:${VERSION}-${PLATFORM_TAG},${IMAGE}:latest-${PLATFORM_TAG}" >> $GITHUB_OUTPUT
-          else
-            echo "tags=${IMAGE}:latest-${PLATFORM_TAG}" >> $GITHUB_OUTPUT
-          fi
-          echo "platform=${{ matrix.platform }}" >> $GITHUB_OUTPUT
-
       - name: Build and push by digest
         id: build
         uses: docker/build-push-action@v6
@@ -76,7 +63,6 @@ jobs:
           context: .
           platforms: ${{ matrix.platform }}
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true
