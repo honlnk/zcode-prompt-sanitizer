@@ -41,7 +41,7 @@ The model still sees the branch name; the WAF no longer sees the trigger phrase.
 
 ```bash
 # Install globally (or use npx)
-npm install -g zcode-prompt-sanitizer
+npm install -g @honlnk/zcode-prompt-sanitizer
 
 # Start the proxy (uses built-in defaults that cover the known trigger)
 zps
@@ -221,7 +221,7 @@ Key design decisions:
 ## Programmatic API
 
 ```typescript
-import { Sanitizer } from 'zcode-prompt-sanitizer';
+import { Sanitizer } from '@honlnk/zcode-prompt-sanitizer';
 
 const sanitizer = new Sanitizer([
   {

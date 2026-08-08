@@ -34,9 +34,9 @@ jobs:
         id: skip
         run: |
           set -e
-          if npm view "zcode-prompt-sanitizer@${{ steps.ver.outputs.version }}" version >/dev/null 2>&1; then
+          if npm view "@honlnk/zcode-prompt-sanitizer@${{ steps.ver.outputs.version }}" version >/dev/null 2>&1; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
-            echo "::notice::npm zcode-prompt-sanitizer@${{ steps.ver.outputs.version }} 已存在，跳过发布"
+            echo "::notice::npm @honlnk/zcode-prompt-sanitizer@${{ steps.ver.outputs.version }} 已存在，跳过发布"
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi

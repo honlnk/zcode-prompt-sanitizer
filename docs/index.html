@@ -267,7 +267,7 @@
     <p>一个本地反向代理，在请求到达第三方 API 供应商之前，<strong>自动改写</strong> ZCode 注入的 git 上下文等触发内容审查的 prompt 片段。改写规则完全可配置，SSE 流式透传，自带可视化管理台。</p>
     <div class="install-cmd">
       <span class="prompt">$</span>
-      <code>npx zcode-prompt-sanitizer</code>
+      <code>npx @honlnk/zcode-prompt-sanitizer</code>
     </div>
     <div class="hero-actions" style="margin-top: 24px;">
       <a href="#usage" class="btn btn-primary">快速开始</a>
@@ -432,13 +432,13 @@ rules:
         </div>
         <div class="tab-panel active" id="tab-npm">
           <pre><code># 全局安装
-npm install -g zcode-prompt-sanitizer
+npm install -g @honlnk/zcode-prompt-sanitizer
 
 # 启动（内置默认规则，开箱即用）
 zps
 
 # 或临时运行
-npx zcode-prompt-sanitizer</code></pre>
+npx @honlnk/zcode-prompt-sanitizer</code></pre>
         </div>
         <div class="tab-panel" id="tab-docker">
           <pre><code># docker compose
@@ -494,7 +494,7 @@ upstreams:
       <p>
         <a href="https://github.com/honlnk/zcode-prompt-sanitizer" target="_blank" rel="noopener">GitHub</a>
         &nbsp;·&nbsp;
-        <a href="https://www.npmjs.com/package/zcode-prompt-sanitizer" target="_blank" rel="noopener">npm</a>
+        <a href="https://www.npmjs.com/package/@honlnk/zcode-prompt-sanitizer" target="_blank" rel="noopener">npm</a>
         &nbsp;·&nbsp;
         <a href="https://hub.docker.com/r/honlnk/zcode-prompt-sanitizer" target="_blank" rel="noopener">Docker Hub</a>
         &nbsp;·&nbsp;
