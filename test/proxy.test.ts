@@ -318,3 +318,44 @@ describe('proxy without configured upstream (Host-header passthrough)', () => {
     await running.close();
   });
 });
+
+describe('single-upstream routing (no client hints required)', () => {
+  // Regression test: when exactly one upstream is configured, the proxy must
+  // forward to it unconditionally — no x-zps-provider header, no Authorization
+  // substring match needed. This matches the standard behavior of http-proxy,
+  // nginx, liteLLM, and one-api. Previously the proxy would fall back to a
+  // Host-header passthrough and loop back to itself (EADDRNOTAVAIL).
+  it('routes to the sole configured upstream without any routing header', async () => {
+    let received: any = null;
+    await upstreamClose();
+    const up = await startEchoUpstream((body) => {
+      received = body;
+    });
+    upstreamPort = up.port;
+    upstreamClose = up.close;
+
+    const config: SanitizerConfig = {
+      ...createDefaultConfig(),
+      port: 0,
+      dashboard: { enabled: false, port: 0 },
+      upstreams: {
+        // Key deliberately does NOT match any header the client sends.
+        'some-random-name': { target: `http://127.0.0.1:${upstreamPort}` },
+      },
+      rules: [],
+    };
+    const running = startServer(config, { configPath: null, quiet: true });
+    await waitForListening(running.proxy);
+    const proxyPort = (running.proxy.address() as any).port;
+
+    // No x-zps-provider header, no matching Authorization — just a plain request.
+    const res = await httpRequestAsync(proxyPort, {
+      messages: [{ role: 'user', content: 'hello' }],
+    });
+
+    expect(res.status).toBe(200);
+    expect(received).not.toBeNull();
+    expect(received.messages[0].content).toBe('hello');
+    await running.close();
+  });
+});

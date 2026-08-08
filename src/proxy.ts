@@ -202,12 +202,22 @@ export function createProxyServer(deps: ProxyDeps): Server {
 }
 
 function resolveUpstream(req: IncomingMessage, config: SanitizerConfig): Upstream {
+  const upstreamKeys = Object.keys(config.upstreams);
+
+  // Standard behavior (matches http-proxy, nginx, liteLLM, one-api): when only
+  // ONE upstream is configured, forward everything to it unconditionally — no
+  // client-side routing header required. This is the common case for a local
+  // sanitizer where ZCode just points its baseURL at the proxy.
+  if (upstreamKeys.length === 1) {
+    return config.upstreams[upstreamKeys[0]!]!;
+  }
+
+  // Multi-upstream routing: try explicit hint first, then heuristics.
   const providerHint = getHeader(req.headers, 'x-zps-provider');
   if (providerHint) {
     const key = findUpstreamKey(config.upstreams, providerHint);
     if (key) return config.upstreams[key];
   }
-  // Infer from Authorization bearer prefix or path segment.
   const auth = getHeader(req.headers, 'authorization') ?? '';
   if (auth) {
     const key = findUpstreamKey(config.upstreams, auth);
@@ -218,6 +228,7 @@ function resolveUpstream(req: IncomingMessage, config: SanitizerConfig): Upstrea
     const key = findUpstreamKey(config.upstreams, host);
     if (key) return config.upstreams[key];
   }
+
   // Fall back: synthesize a passthrough upstream from the Host header so the
   // proxy can operate without any config when the client points directly at it.
   if (host) {
