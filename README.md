@@ -57,6 +57,36 @@ You'll see:
      Upstreams  →  none configured (passthrough by Host header)
 ```
 
+### …or run with Docker
+
+```bash
+# Build and run with docker compose (recommended)
+docker compose up -d
+```
+
+Put your config at `./sanitizer.config.yaml` next to `docker-compose.yml` (see [`examples/docker-compose.example.yml`](examples/docker-compose.example.yml)). The proxy is then reachable at `http://127.0.0.1:18790`, dashboard at `http://127.0.0.1:18790/__zps__`.
+
+<details>
+<summary>Or run with plain <code>docker</code></summary>
+
+```bash
+# Build
+docker build -t zcode-prompt-sanitizer .
+
+# Run — mount your config, map the port
+docker run -d --name zps \
+  -p 18790:18790 \
+  -v "$PWD/sanitizer.config.yaml:/data/sanitizer.config.yaml" \
+  zcode-prompt-sanitizer
+
+# Or run with zero config (built-in defaults)
+docker run -d --name zps -p 18790:18790 zcode-prompt-sanitizer \
+  node dist/cli.js --no-dashboard
+```
+
+> **Note:** Inside a container the proxy binds `0.0.0.0` (set via `ZPS_HOST` in the Dockerfile), because `127.0.0.1` in a container refers to its own loopback and is unreachable from the host. Port mapping (`-p 18790:18790`) makes it accessible from your machine as usual.
+</details>
+
 ### Point ZCode at the proxy
 
 Configure your provider in ZCode to use the proxy address. Exactly how depends on how your provider is set up:
