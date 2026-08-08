@@ -1,5 +1,10 @@
 # 发布 npm 包。
 # 当推送 v* 标签时触发，构建并发布到 npm registry。
+# 幂等：若该版本已在 npm registry 则跳过（兼容「先手动发再推 tag」）。
+#
+# 所需 secrets（仓库 Settings → Actions）：
+# - NPM_TOKEN   npm publish token
+# GITHUB_TOKEN 由 Actions 自动注入。
 
 name: Release npm
 
@@ -15,25 +20,48 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # npm --provenance 需要
     steps:
       - uses: actions/checkout@v4
 
+      - name: Extract version from tag
+        id: ver
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Skip if version already published
+        id: skip
+        run: |
+          set -e
+          if npm view "zcode-prompt-sanitizer@${{ steps.ver.outputs.version }}" version >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::npm zcode-prompt-sanitizer@${{ steps.ver.outputs.version }} 已存在，跳过发布"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/setup-node@v4
+        if: steps.skip.outputs.exists != 'true'
         with:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
           cache: npm
 
       - name: Install dependencies
+        if: steps.skip.outputs.exists != 'true'
         run: npm ci
 
       - name: Run tests
+        if: steps.skip.outputs.exists != 'true'
         run: npm test
 
       - name: Build
+        if: steps.skip.outputs.exists != 'true'
         run: npm run build
 
-      - name: Publish to npm
-        run: npm publish --access public
+      - name: Publish
+        if: steps.skip.outputs.exists != 'true'
+        run: npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
