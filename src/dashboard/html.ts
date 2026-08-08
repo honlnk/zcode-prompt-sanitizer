@@ -3,12 +3,38 @@
  * no external CDN) so the proxy works fully offline. Embedded as a TS string to
  * avoid shipping extra static-file-handling machinery.
  */
+
+/**
+ * Brand mark for zcode-prompt-sanitizer: a shield (sanitizer/protection) with a
+ * filter funnel at its center (prompt rewriting). Visual style matches the
+ * sibling projects linkseek / picsense — a solid rounded-square badge with
+ * white line art and a single accent color. Kept as a 64×64 symbol so the same
+ * art scales from favicon (16px) to header logo (~22px) without re-rendering.
+ */
+export const BRAND_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="brand-title brand-desc">
+  <title id="brand-title">zcode-prompt-sanitizer</title>
+  <desc id="brand-desc">A shield with a filtering funnel</desc>
+  <rect width="64" height="64" rx="16" fill="#0969DA"/>
+  <path d="M32 9 50 16V30c0 11-7.5 19.5-18 23C21.5 49.5 14 41 14 30V16L32 9Z" fill="none" stroke="#fff" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M24 22h16l-3 7v3a3 3 0 0 1-3 3h-4a3 3 0 0 1-3-3v-3l-3-7Z" fill="none" stroke="#fff" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M28 35h8M30 39h4" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>
+</svg>`;
+
+/** URL-encoded brand SVG for use inside an <link rel=icon href=data:…>. */
+function brandFaviconHref(): string {
+  // encodeURIComponent matches the encoding <data:image/svg+xml,…> expects.
+  return `data:image/svg+xml,${encodeURIComponent(BRAND_SVG)}`;
+}
+
 export function dashboardHtml(version: string): string {
+  const favicon = brandFaviconHref();
   return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="icon" type="image/svg+xml" href="${favicon}" />
+<link rel="apple-touch-icon" href="${favicon}" />
 <title>zcode-prompt-sanitizer</title>
 <style>
   :root {
@@ -19,7 +45,8 @@ export function dashboardHtml(version: string): string {
   * { box-sizing: border-box; }
   body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
          background: var(--bg); color: var(--text); line-height: 1.5; }
-  header { padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 16px; }
+  header { padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
+  header .brand svg { width: 28px; height: 28px; display: block; flex-shrink: 0; }
   header h1 { font-size: 16px; margin: 0; font-weight: 600; }
   header .meta { color: var(--muted); font-size: 13px; font-family: var(--mono); }
   header .badge { background: var(--green); color: #000; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
@@ -60,7 +87,8 @@ export function dashboardHtml(version: string): string {
 </head>
 <body>
 <header>
-  <h1>🛡 zcode-prompt-sanitizer</h1>
+  <span class="brand">${BRAND_SVG}</span>
+  <h1>zcode-prompt-sanitizer</h1>
   <span class="badge" id="health">online</span>
   <span class="meta" id="meta">v${version}</span>
 </header>
