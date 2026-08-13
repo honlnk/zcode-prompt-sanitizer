@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>zcode-prompt-sanitizer · ZCode WAF 误拦截本地代理</title>
-  <meta name="description" content="一个本地反向代理，在请求到达第三方 API 供应商之前改写 ZCode 自动注入的 git 上下文等触发 WAF 误拦截的 prompt 片段，让 ZCode 接入任意供应商时不被内容审查误拦。" />
-  <meta name="keywords" content="ZCode,腾讯 Copilot,WorkBuddy,敏感内容,系统检测到您当前输入的信息存在敏感内容,WAF 误拦截,本地代理,prompt 改写" />
+  <title>ZCode 连接 WorkBuddy 提示敏感内容被拦截？本地代理解决 WAF 误拦截</title>
+  <meta name="description" content="解决 ZCode 连接腾讯 Copilot / WorkBuddy 时报「系统检测到您当前输入的信息存在敏感内容」被 WAF 拦截——本地反向代理自动改写触发内容审查的 git 上下文 prompt 片段，SSE 流式透传，自带可视化管理台，开源免费。" />
+  <meta name="keywords" content="ZCode,腾讯 Copilot,WorkBuddy,zcode workbuddy,zcode 链接 workbuddy,敏感内容,系统检测到您当前输入的信息存在敏感内容,zcode 敏感内容,WAF 误拦截,内容审查,prompt 改写,git 上下文,prompt 注入误报,you will usually use this for PRs,copilot.tencent.com,本地反向代理,zcode 无法使用" />
   <link rel="canonical" href="https://sanitize.honlnk.com/" />
   <!-- Open Graph -->
   <meta property="og:type" content="website" />
@@ -256,6 +256,68 @@
       .nav-links a:not(.btn-github) { display: none; }
     }
   </style>
+  <!-- 结构化数据：帮助搜索引擎理解页面内容，提升收录与 rich snippet 机会 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "zcode-prompt-sanitizer",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Cross-platform (Node.js >= 18 / Docker)",
+    "url": "https://sanitize.honlnk.com/",
+    "description": "本地反向代理，解决 ZCode 连接腾讯 Copilot / WorkBuddy 时因注入的 git 上下文触发 WAF 内容审查、提示存在敏感内容而被拦截的问题。",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+    "license": "https://github.com/honlnk/zcode-prompt-sanitizer/blob/master/LICENSE"
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "为什么 ZCode 连接 WorkBuddy 后提示系统检测到敏感内容？",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "这是腾讯 WAF 的误报，不是你输入的内容有问题。ZCode 在 git 项目里发消息时会自动把 git 上下文拼进 system prompt，其中 \"Main branch (you will usually use this for PRs)\" 被 WAF 模式匹配成 prompt 注入语句，整个请求在网关层被拦下，模型并未处理（被拦请求 tokens = 0）。"
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "提示敏感内容是我自己输入的问题吗？",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "不是。即使用户只输入\"你好\"，ZCode 实际发出的 prompt 也有 8000+ 字符（大部分是自动注入的 git 上下文）。拦截发生在注入的上下文上，与用户输入无关，所以在 git 项目里发任何消息都会被拦截。"
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "zcode-prompt-sanitizer 会影响模型理解吗？",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "不会。它把触发 WAF 的句子（如 Main branch (you will usually use this for PRs):）改写成中性表述（Default git branch:），分支名仍然保留，模型照样能看到，只是去掉了触发 WAF 的句式，功能不受影响。"
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "只支持腾讯 Copilot / WorkBuddy 吗？",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "不。它是通用代理，规则完全可配置。内置默认规则覆盖已知的腾讯 WAF 触发词，你可以自定义规则处理任意供应商的内容审查拦截。只要供应商兼容 OpenAI Chat Completions 接口就能用。"
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "需要改 ZCode 的代码吗？是免费开源的吗？",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "不需要改任何代码，只需把 ZCode 里供应商的 Base URL 改成本地代理地址 http://127.0.0.1:18790，API Key 不变。项目完全免费、开源（MIT 协议），本地运行，请求不经过任何第三方服务器。"
+        }
+      }
+    ]
+  }
+  </script>
 </head>
 <body>
   <header>
@@ -269,6 +331,7 @@
         <a href="#solution">方案</a>
         <a href="#rules">规则</a>
         <a href="#usage">使用</a>
+        <a href="#faq">FAQ</a>
         <a href="https://github.com/honlnk/zcode-prompt-sanitizer" class="btn-github" target="_blank" rel="noopener">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
           GitHub
@@ -503,6 +566,33 @@ upstreams:
           <tr><td><code>--no-dashboard</code></td><td><code>ZPS_DASHBOARD=0</code></td><td>开</td><td>关闭管理台</td></tr>
         </tbody>
       </table>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section id="faq">
+    <div class="container">
+      <p class="section-title">常见问题</p>
+      <h2>ZCode 敏感内容拦截 · 常见问题</h2>
+      <p class="section-desc">关于「系统检测到您当前输入的信息存在敏感内容」和 WAF 误拦截的高频疑问。</p>
+
+      <h3>为什么 ZCode 连接 WorkBuddy 后提示「系统检测到您当前输入的信息存在敏感内容」？</h3>
+      <p>这是<strong>腾讯 WAF 的误报</strong>，不是你输入的内容有问题。根因是 ZCode 在 git 项目里发消息时，会自动把 git 上下文拼进 system prompt，其中 <code>"Main branch (you will usually use this for PRs)"</code> 这句被 WAF 模式匹配成 prompt 注入 / 越狱语句，整个请求在网关层就被拦下，模型根本没处理（被拦请求的 <code>tokens = 0</code>）。</p>
+
+      <h3>提示「敏感内容」是我自己输入的问题吗？</h3>
+      <p>不是。即使用户只输入「你好」，ZCode 实际发出的 prompt 也有 8000+ 字符（大部分是自动注入的 git 上下文）。拦截发生在<strong>注入的上下文</strong>上，与你输入的内容无关——所以在 git 项目里<strong>发任何消息都会被拦截</strong>。</p>
+
+      <h3>zcode-prompt-sanitizer 会影响模型理解吗？</h3>
+      <p>不会。它把触发 WAF 的句子（如 <code>Main branch (you will usually use this for PRs):</code>）改写成中性表述（<code>Default git branch:</code>）。<strong>分支名仍然保留</strong>，模型照样能看到，只是去掉了触发 WAF 的句式，功能不受影响。</p>
+
+      <h3>只支持腾讯 Copilot / WorkBuddy 吗？</h3>
+      <p>不。它是通用代理，规则完全可配置。内置默认规则覆盖已知的腾讯 WAF 触发词；你可以自定义规则处理任意供应商的内容审查拦截。只要供应商兼容 OpenAI Chat Completions 接口就能用。</p>
+
+      <h3>需要改 ZCode 的代码吗？会被检测到吗？</h3>
+      <p>不需要改任何代码。只需把 ZCode 里供应商的 Base URL 从真实地址改成本地代理地址（<code>http://127.0.0.1:18790</code>），API Key 不变。代理只做字符串改写和转发，SSE 流式透传，对客户端完全透明。</p>
+
+      <h3>是免费的吗？开源吗？</h3>
+      <p>完全免费、开源（MIT 协议）。本地运行，请求不经过任何第三方服务器，配置和密钥都留在你自己的机器上。</p>
     </div>
   </section>
 
