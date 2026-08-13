@@ -1,9 +1,10 @@
 # 发布 npm 包。
-# 当推送 v* 标签时触发，构建并发布到 npm registry。
+# 当推送 v* 标签时触发，构建并发布到 npm registry（Trusted Publishing / OIDC，免 token）。
 # 幂等：若该版本已在 npm registry 则跳过（兼容「先手动发再推 tag」）。
 #
-# 所需 secrets（仓库 Settings → Actions）：
-# - NPM_TOKEN   npm publish token
+# 前置：需在 npmjs.com 该包 Settings → Trusted Publisher 配置本仓库——
+#   org/user=honlnk、repo=zcode-prompt-sanitizer、workflow filename=release-npm.yml、
+#   Allowed actions 勾选 npm publish。配置后不再需要 NPM_TOKEN secret。
 # GITHUB_TOKEN 由 Actions 自动注入。
 
 name: Release npm
@@ -44,7 +45,7 @@ jobs:
       - uses: actions/setup-node@v4
         if: steps.skip.outputs.exists != 'true'
         with:
-          node-version: '22'
+          node-version: '24' # trusted publishing 要求 Node ≥ 22.14 且 npm CLI ≥ 11.5.1（Node 24 自带 npm 11.x）
           registry-url: 'https://registry.npmjs.org'
           cache: npm
 
@@ -62,6 +63,6 @@ jobs:
 
       - name: Publish
         if: steps.skip.outputs.exists != 'true'
-        run: npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        # Trusted Publishing：npm CLI 自动用 OIDC 凭证认证，并自动附带 provenance。
+        # 不要设置 NODE_AUTH_TOKEN（否则 setup-node 会注入 token、覆盖 OIDC 认证）。
+        run: npm publish --access public
