@@ -2,8 +2,7 @@
 #
 # 触发：
 #   - push tag v*     → 发布版本号 + latest
-#   - push to master  → 发布 latest
-#   - workflow_dispatch
+#   - workflow_dispatch（手动兜底）
 
 name: Release Docker
 
@@ -11,14 +10,6 @@ on:
   push:
     tags:
       - 'v*'
-    branches:
-      - master
-    paths:
-      - 'src/**'
-      - 'Dockerfile'
-      - 'package.json'
-      - 'package-lock.json'
-      - '.github/workflows/release-docker.yml'
   workflow_dispatch:
 
 permissions:
