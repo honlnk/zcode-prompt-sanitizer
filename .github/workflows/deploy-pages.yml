@@ -1,5 +1,5 @@
 # 部署官网（docs/）到 GitHub Pages。
-# 推送到 master 分支后自动触发，部署 docs/ 目录下的静态文件。
+# 推送 v* tag（发版）时触发，部署 docs/ 目录下的静态文件。
 #
 # 首次使用前需在 GitHub 仓库 Settings → Pages 里：
 #   - Source 选 "GitHub Actions"
@@ -8,10 +8,8 @@ name: Deploy Pages
 
 on:
   push:
-    branches: [master]
-    paths:
-      - 'docs/**'
-      - '.github/workflows/deploy-pages.yml'
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 permissions:
