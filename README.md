@@ -50,7 +50,7 @@ zps
 You'll see:
 
 ```
-  🛡  zcode-prompt-sanitizer v0.1.0
+  🛡  zcode-prompt-sanitizer v0.1.1
      Proxy      →  http://127.0.0.1:18790
      Dashboard  →  http://127.0.0.1:18790/__zps__
      Rules      →  2 active / 2 total
