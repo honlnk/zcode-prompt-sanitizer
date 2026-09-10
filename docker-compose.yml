@@ -23,9 +23,26 @@ services:
       - ZPS_PORT=18790
       # Verbose logging off by default; flip to "1" to debug.
       - ZPS_VERBOSE=0
+      # NEVER set ZPS_DAEMON=1 in a container: the daemon parent exits after
+      # forking, which kills the container's main process and (combined with
+      # restart: unless-stopped) causes an endless restart loop.
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:18790/__zps__/api/status').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 10s
+    # Container logs are managed by Docker's json-file driver inside the
+    # Docker Desktop Linux VM — cap them here (mirrors the host daemon mode's
+    # 2-generation log rotation) so long runs can't grow the VM disk unbounded.
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+    # The process only needs to bind an unprivileged port and serve HTTP —
+    # drop everything else.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL

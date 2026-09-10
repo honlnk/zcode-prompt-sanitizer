@@ -52,6 +52,18 @@ describe('loadConfig', () => {
     expect(cfg.rules).toHaveLength(BUILTIN_RULES.length);
   });
 
+  it('treats an empty config file as defaults instead of crashing', () => {
+    // Compose docs suggest putting a config at ./config.yaml — a `touch`ed
+    // placeholder must not take the container down.
+    const dir = mkdtempSync(join(tmpdir(), 'zps-'));
+    const file = join(dir, 'empty.yaml');
+    writeFileSync(file, '', 'utf8');
+    const cfg = loadConfig(file);
+    expect(cfg.port).toBe(18790);
+    expect(cfg.rules).toHaveLength(BUILTIN_RULES.length);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   it('loads a YAML config and merges over defaults', () => {
     const dir = mkdtempSync(join(tmpdir(), 'zps-'));
     const file = join(dir, 'sanitizer.config.yaml');

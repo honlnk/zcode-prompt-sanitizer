@@ -21,6 +21,30 @@ export interface RunningServer {
 }
 
 /**
+ * Render the startup banner shown once the server is listening. Extracted so
+ * the daemon child can ship it to the foreground parent over IPC.
+ */
+export function formatBanner(config: SanitizerConfig): string {
+  const bind = `http://${config.host}:${config.port}`;
+  const lines = [
+    `\n  🛡  zcode-prompt-sanitizer v${VERSION}`,
+    `     Proxy      →  ${bind}`,
+  ];
+  if (config.dashboard.enabled) {
+    lines.push(`     Dashboard  →  ${bind}/__zps__`);
+  }
+  const enabled = config.rules.filter((r) => r.enabled).length;
+  lines.push(`     Rules      →  ${enabled} active / ${config.rules.length} total`);
+  if (Object.keys(config.upstreams).length) {
+    lines.push(`     Upstreams  →  ${Object.keys(config.upstreams).join(', ')}`);
+  } else {
+    lines.push(`     Upstreams  →  none configured (passthrough by Host header)`);
+  }
+  lines.push('');
+  return lines.join('\n');
+}
+
+/**
  * Build and start the proxy (+ dashboard) server. Returns once the server is
  * listening. The dashboard is served from the same proxy port under the
  * /__zps__ prefix unless a separate dashboard port is configured.
@@ -42,7 +66,6 @@ export function startServer(
 
   // Wrap the proxy server so dashboard routes are intercepted first.
   const baseProxy = createProxyServer({ config, sanitizer, onRequest });
-  const dashboardEnabled = config.dashboard.enabled;
 
   const proxyServer = composeWithDashboard(baseProxy, {
     config,
@@ -55,21 +78,7 @@ export function startServer(
   // We attach a one-shot handler so callers that read .address() right after
   // startServer returns work reliably (the event loop has flushed by then).
   proxyServer.listen(config.port, config.host, () => {
-    if (opts.quiet) return;
-    const bind = `http://${config.host}:${config.port}`;
-    console.log(`\n  🛡  zcode-prompt-sanitizer v${VERSION}`);
-    console.log(`     Proxy      →  ${bind}`);
-    if (dashboardEnabled) {
-      console.log(`     Dashboard  →  ${bind}/__zps__`);
-    }
-    const enabled = config.rules.filter((r) => r.enabled).length;
-    console.log(`     Rules      →  ${enabled} active / ${config.rules.length} total`);
-    if (Object.keys(config.upstreams).length) {
-      console.log(`     Upstreams  →  ${Object.keys(config.upstreams).join(', ')}`);
-    } else {
-      console.log(`     Upstreams  →  none configured (passthrough by Host header)`);
-    }
-    console.log('');
+    if (!opts.quiet) console.log(formatBanner(config));
   });
 
   return {
