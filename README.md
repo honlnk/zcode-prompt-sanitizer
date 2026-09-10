@@ -179,8 +179,43 @@ Rules apply **in order**; replacements can chain (rule A's output is visible to 
 | `--host <addr>`  | `ZPS_HOST`      | `127.0.0.1` | Bind address                   |
 | `--verbose`      | `ZPS_VERBOSE=1` | off      | Log every proxied request         |
 | `--no-dashboard` | `ZPS_DASHBOARD=0` | on     | Disable the management dashboard  |
+| `-d, --daemon`   | `ZPS_DAEMON=1`  | off      | Run in background (see below)     |
+| `--stop`         | —               | —        | Stop the background daemon        |
 | `-v, --version`  | —               | —        | Print version                     |
 | `-h, --help`     | —               | —        | Show help                         |
+
+### Running in the background (daemon mode)
+
+`zps --daemon` starts the proxy as a detached background process: it prints the
+startup banner, then returns your terminal while the server keeps running —
+including after the terminal is closed.
+
+```bash
+zps --daemon     # start in background
+zps --stop       # stop it (SIGTERM via the pidfile, graceful shutdown)
+```
+
+Daemon state lives next to the config:
+
+| File                                    | Contents                        |
+| --------------------------------------- | ------------------------------- |
+| `~/.zcode-prompt-sanitizer/zps.log`     | daemon stdout/stderr (banner, request logs) |
+| `~/.zcode-prompt-sanitizer/zps.log.1`   | previous log generation         |
+| `~/.zcode-prompt-sanitizer/zps.pid`     | pidfile (JSON: pid, host, port) |
+
+**Log rotation is built in**: when `zps.log` exceeds 5 MiB it is rotated to
+`zps.log.1` (replacing any older file) — checked at every daemon start and once
+per hour while running. Total log footprint stays under ~10 MiB, no external
+logrotate tooling or scheduled cleanup needed.
+
+Notes:
+
+- Re-running `zps --daemon` while an instance is alive is a no-op — it prints
+  the running instance's address instead of starting a conflicting one.
+- A stale pidfile (e.g. after a crash) is detected and cleaned up on the next
+  `--daemon` / `--stop`.
+- Don't use `--daemon` inside Docker — containers need the foreground process.
+
 
 ---
 
