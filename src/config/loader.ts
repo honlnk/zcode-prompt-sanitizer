@@ -146,11 +146,14 @@ function mergeConfig(
   raw: unknown,
   source: string,
 ): SanitizerConfig {
-  if (!raw || typeof raw !== 'object') {
+  const out = structuredClone(base);
+  // An empty document (e.g. a `touch`ed placeholder config file) means
+  // "use defaults" rather than a parse failure.
+  if (raw === null || raw === undefined) return out;
+  if (typeof raw !== 'object') {
     throw new ConfigError('Config root must be an object', source);
   }
   const obj = raw as Record<string, unknown>;
-  const out = structuredClone(base);
 
   if (obj.port !== undefined) {
     if (typeof obj.port !== 'number' || !Number.isInteger(obj.port)) {
