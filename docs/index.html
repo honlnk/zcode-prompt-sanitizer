@@ -3,24 +3,24 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ZCode 连接 WorkBuddy 提示敏感内容被拦截？本地代理解决 WAF 误拦截</title>
-  <meta name="description" content="解决 ZCode 连接腾讯 Copilot / WorkBuddy 时报「系统检测到您当前输入的信息存在敏感内容」被 WAF 拦截——本地反向代理自动改写触发内容审查的 git 上下文 prompt 片段，SSE 流式透传，自带可视化管理台，开源免费。" />
-  <meta name="keywords" content="ZCode,腾讯 Copilot,WorkBuddy,zcode workbuddy,zcode 链接 workbuddy,敏感内容,系统检测到您当前输入的信息存在敏感内容,zcode 敏感内容,WAF 误拦截,内容审查,prompt 改写,git 上下文,prompt 注入误报,you will usually use this for PRs,copilot.tencent.com,本地反向代理,zcode 无法使用" />
+  <title>ZCode 敏感内容被拦截 / 思考块碎裂刷屏？本地代理修复腾讯 API 兼容问题</title>
+  <meta name="description" content="解决 ZCode 接入腾讯 Copilot / WorkBuddy 的两大问题：报「系统检测到您当前输入的信息存在敏感内容」的 WAF 误拦截，以及思考过程碎成几十段的「思考块碎裂」。本地反向代理自动改写触发审查的 prompt 片段、可选规整 SSE 响应，支持后台守护运行，自带可视化管理台，开源免费。" />
+  <meta name="keywords" content="ZCode,腾讯 Copilot,WorkBuddy,zcode workbuddy,zcode 链接 workbuddy,敏感内容,系统检测到您当前输入的信息存在敏感内容,zcode 敏感内容,WAF 误拦截,内容审查,prompt 改写,git 上下文,prompt 注入误报,you will usually use this for PRs,copilot.tencent.com,本地反向代理,zcode 无法使用,思考块碎裂,思考 持续了几秒,思考块刷屏,zcode 思考 刷屏,深度思考 拆碎,reasoning_content,tool_calls 空数组,腾讯混元,zps daemon,后台运行" />
   <link rel="canonical" href="https://sanitize.honlnk.com/" />
   <!-- Open Graph -->
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://sanitize.honlnk.com/" />
   <meta property="og:site_name" content="zcode-prompt-sanitizer" />
-  <meta property="og:title" content="zcode-prompt-sanitizer · 让 ZCode 不再被 WAF 误拦" />
-  <meta property="og:description" content="解决 ZCode 接入腾讯 Copilot / WorkBuddy 报「系统检测到您当前输入的信息存在敏感内容」——本地反向代理自动改写触发内容审查的 prompt 片段，SSE 流式透传，自带可视化管理台。" />
+  <meta property="og:title" content="zcode-prompt-sanitizer · 修复 ZCode 接入腾讯 API 的两大兼容问题" />
+  <meta property="og:description" content="解决 ZCode 接入腾讯 Copilot / WorkBuddy 报「敏感内容」的 WAF 误拦截，以及思考过程碎成几十段的思考块碎裂——本地反向代理改写 prompt 片段、可选规整 SSE 响应，自带可视化管理台。" />
   <meta property="og:image" content="https://sanitize.honlnk.com/og.png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <meta property="og:locale" content="zh_CN" />
   <!-- Twitter -->
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="zcode-prompt-sanitizer · 让 ZCode 不再被 WAF 误拦" />
-  <meta name="twitter:description" content="解决 ZCode 接入腾讯 Copilot / WorkBuddy 报「敏感内容」的 WAF 误拦截——本地反向代理改写 prompt 片段。" />
+  <meta name="twitter:title" content="zcode-prompt-sanitizer · 修复 ZCode 腾讯 API 两大兼容问题" />
+  <meta name="twitter:description" content="解决 ZCode 接入腾讯 Copilot / WorkBuddy 的 WAF「敏感内容」误拦截和思考块碎裂——本地反向代理改写 prompt 片段、规整 SSE 响应。" />
   <meta name="twitter:image" content="https://sanitize.honlnk.com/og.png" />
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%230969DA'/%3E%3Cpath d='M32 9 50 16V30c0 11-7.5 19.5-18 23C21.5 49.5 14 41 14 30V16L32 9Z' fill='none' stroke='white' stroke-width='4' stroke-linejoin='round'/%3E%3Cpath d='M24 22h16l-3 7v3a3 3 0 0 1-3 3h-4a3 3 0 0 1-3-3v-3l-3-7Z' fill='none' stroke='white' stroke-width='3' stroke-linejoin='round'/%3E%3Cpath d='M28 35h8M30 39h4' fill='none' stroke='white' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E" />
   <style>
@@ -265,7 +265,7 @@
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "Cross-platform (Node.js >= 18 / Docker)",
     "url": "https://sanitize.honlnk.com/",
-    "description": "本地反向代理，解决 ZCode 连接腾讯 Copilot / WorkBuddy 时因注入的 git 上下文触发 WAF 内容审查、提示存在敏感内容而被拦截的问题。",
+    "description": "本地反向代理，解决 ZCode 连接腾讯 Copilot / WorkBuddy 的两大兼容问题：因注入的 git 上下文触发 WAF 内容审查、提示存在敏感内容被拦截；以及腾讯 SSE 空 tool_calls 字段导致思考过程碎成几十段。支持后台守护运行，自带可视化管理台。",
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
     "license": "https://github.com/honlnk/zcode-prompt-sanitizer/blob/master/LICENSE"
   }
@@ -297,6 +297,22 @@
         "acceptedAnswer": {
           "@type": "Answer",
           "text": "不会。它把触发 WAF 的句子（如 Main branch (you will usually use this for PRs):）改写成中性表述（Default git branch:），分支名仍然保留，模型照样能看到，只是去掉了触发 WAF 的句式，功能不受影响。"
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "ZCode 用腾讯模型时，思考过程碎成几十个「思考 · 持续了几秒」小块怎么办？",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "这是腾讯 SSE 在每个 chunk 里都携带空的 tool_calls: [] 和 finish_reason: \"\"，触发 ZCode 内置旧版 AI SDK 反复关闭思考块所致。开启 zcode-prompt-sanitizer 的响应修复开关（配置 responseFixes.stripEmptyDeltaFields: true，或在管理台一键开启），代理会在转发时剥除这些空字段，思考恢复为完整的一块。"
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "如何让代理在后台常驻运行？",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "使用 zps --daemon 以守护进程方式后台启动，启动后终端立即可用，关闭终端代理仍在运行；zps --stop 优雅停止。日志写入 ~/.zcode-prompt-sanitizer/zps.log，超过 5MB 自动轮转为 zps.log.1。"
         }
       },
       {
@@ -342,9 +358,9 @@
 
   <!-- Hero -->
   <div class="container hero">
-    <span class="hero-badge">本地代理 · 开源 · 零侵入</span>
+    <span class="hero-badge">本地代理 · 开源 · 零侵入 · v0.3.1</span>
     <h1>让 ZCode <span class="grad">不再被 WAF 误拦</span></h1>
-    <p>一个本地反向代理，在请求到达第三方 API 供应商之前，<strong>自动改写</strong> ZCode 注入的 git 上下文等触发内容审查的 prompt 片段。改写规则完全可配置，SSE 流式透传，自带可视化管理台。</p>
+    <p>一个本地反向代理，在请求到达第三方 API 供应商之前，<strong>自动改写</strong> ZCode 注入的 git 上下文等触发内容审查的 prompt 片段。改写规则完全可配置，SSE 流式透传，支持后台守护运行，自带可视化管理台。v0.3 起还可<strong>修复腾讯「思考块碎裂」</strong>问题。</p>
     <div class="install-cmd">
       <span class="prompt">$</span>
       <code>npx @honlnk/zcode-prompt-sanitizer</code>
@@ -360,15 +376,18 @@
   <section id="problem">
     <div class="container">
       <p class="section-title">问题</p>
-      <h2>WAF 误拦截是什么？</h2>
-      <p class="section-desc">当你在 ZCode 中使用第三方 API 供应商（如腾讯 Copilot / WorkBuddy）时，<strong>在 git 项目里发任何消息都会被拦截</strong>，返回"检测到敏感内容"。这不是你的内容有问题——是 WAF 的误报。</p>
+      <h2>接入腾讯 API 的两个已知问题</h2>
+      <p class="section-desc">ZCode 直连腾讯 Copilot / WorkBuddy 时，除了众所周知的「敏感内容」拦截，还有一个隐蔽的思考展示问题。两者都与你的输入无关，也都不需要改 ZCode 代码即可修复。</p>
+
+      <h3>问题一：WAF 误拦截 —— 发任何消息都报「敏感内容」</h3>
+      <p>当你在 ZCode 中使用第三方 API 供应商（如腾讯 Copilot / WorkBuddy）时，<strong>在 git 项目里发任何消息都会被拦截</strong>，返回「检测到敏感内容」。这不是你的内容有问题——是 WAF 的误报。</p>
 
       <div class="diagram">
         <span class="label-muted">ZCode 在 git 项目中自动注入 system prompt：</span><br>
         <span class="label-bad">│ "Main branch (you will usually use this for PRs): master"</span><br>
         <span class="label-muted">│</span><br>
         <span class="label-muted">ZCode</span> <span class="arrow">──►</span> <span class="label-bad">第三方 WAF</span> <span class="arrow">──✕──</span> 模型<br>
-        <span class="label-muted">│</span> &nbsp;&nbsp;&nbsp;&nbsp; <span class="label-muted">"you will usually use this for PRs"</span> 被误判为 prompt 注入<br>
+        <span class="label-muted">│</span> &nbsp;&nbsp;&nbsp;&nbsp; <span class="label-muted">"you will usually use this for PRs" 被误判为 prompt 注入</span><br>
         <span class="label-muted">│</span> &nbsp;&nbsp;&nbsp;&nbsp; <span class="label-muted">请求被直接拦截，模型根本没处理（tokens = 0）</span>
       </div>
 
@@ -376,13 +395,30 @@
         <strong>根因：</strong>ZCode 每次请求前在内存里把 git 上下文拼进 system prompt。腾讯 WAF 对 <code>"you will usually use this for PRs"</code> 做了模式匹配，误判为越狱语句。跨 6 个 git 项目、2 个不同模型全部复现。
       </div>
 
-      <h3>排查路径</h3>
+      <h4>排查路径</h4>
       <ul class="feature-list">
         <li>查 ZCode SQLite 数据库 <code>part</code> 表 → 被拦请求 <code>tokens = 0</code>，说明网关层直接拒答</li>
         <li>读 <code>~/.zcode/cli/rollout/*.jsonl</code> → 用户只输入"你好"，实际发出的 prompt 有 8000+ 字符</li>
         <li>用完整请求体做 <strong>curl 二分重放</strong> → 精准锁定触发语句</li>
         <li>全局搜索源码 → 找到 ZCode 硬编码的 <code>MAIN_BRANCH_LABEL</code> 常量</li>
       </ul>
+
+      <h3>问题二：思考块碎裂 —— 一次回答刷出几十个「思考 · 持续了几秒」</h3>
+      <p>使用腾讯的思考模型（如混元系）时，明明是一段连贯的思考，界面上却碎成几十个独立的「思考」小块，每个只显示持续几秒，刷屏且无法连贯阅读。</p>
+
+      <div class="diagram">
+        <span class="label-muted">腾讯 SSE：每一个 chunk 的 delta 里都塞着</span> <span class="label-bad">"tool_calls": []</span> <span class="label-muted">和</span> <span class="label-bad">"finish_reason": ""</span><br>
+        <span class="label-muted">│</span><br>
+        <span class="label-muted">ZCode 内置的旧版 AI SDK：</span><span class="label-bad">if (delta.tool_calls != null)</span> <span class="label-muted">→ 空数组也成立 → 关闭当前思考块</span><br>
+        <span class="label-muted">│</span><br>
+        <span class="label-muted">下一个 chunk 的 reasoning_content 到来 → 又新开一个思考块</span><br>
+        <span class="label-muted">│</span><br>
+        <span class="label-muted">结果：</span><span class="label-bad">1 段思考 = N 个碎片</span><span class="label-muted">（实测一次回答产生 33 个 token 级碎片）</span>
+      </div>
+
+      <div class="callout callout-warn">
+        <strong>根因：</strong>腾讯在每个 SSE chunk 里带上空的 <code>tool_calls: []</code> 和 <code>finish_reason: ""</code>。ZCode 捆绑的旧版 Vercel AI SDK 用 <code>!= null</code> 判断字段是否存在——空数组和空字符串都"非 null"，于是<strong>每个 chunk 都触发一次「思考结束」</strong>。新版 AI SDK 已修复此问题，但 ZCode 内置的仍是旧逻辑。
+      </div>
     </div>
   </section>
 
@@ -399,7 +435,8 @@
         <span class="label-muted">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span> <span class="label-muted">├─ 解析 JSON 请求体</span><br>
         <span class="label-muted">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span> <span class="label-muted">├─ 对 system 消息做精确字符串替换</span><br>
         <span class="label-muted">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span> <span class="label-muted">├─ 重建请求体并转发</span><br>
-        <span class="label-muted">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span> <span class="label-good">└─ SSE 响应逐 chunk 透传，不缓冲</span>
+        <span class="label-muted">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span> <span class="label-good">└─ SSE 响应逐 chunk 透传，不缓冲</span><br>
+        <span class="label-muted">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span> <span class="label-muted">&nbsp;&nbsp;&nbsp;└─ 可选：剥除空 tool_calls / 空 finish_reason（修复思考块碎裂）</span>
       </div>
 
       <h3>核心特性</h3>
@@ -412,12 +449,12 @@
         <div class="feature-card">
           <div class="icon">⚡</div>
           <h4>SSE 流式透传</h4>
-          <p>响应用 pipe 逐 chunk 流式转发，不缓冲完整响应。流式模型输出保持实时。</p>
+          <p>响应用 pipe 逐 chunk 流式转发，不缓冲完整响应。可选开启响应规整，顺带修复思考块碎裂。</p>
         </div>
         <div class="feature-card">
           <div class="icon">🎛️</div>
           <h4>可视化管理台</h4>
-          <p>自带 Dashboard 网页，实时查看匹配统计，在线增删改规则，改动即时生效并持久化。</p>
+          <p>自带 Dashboard 网页：实时匹配统计、在线增删改规则、响应修复开关，改动即时生效并持久化。</p>
         </div>
         <div class="feature-card">
           <div class="icon">⚙️</div>
@@ -427,7 +464,7 @@
         <div class="feature-card">
           <div class="icon">🐳</div>
           <h4>双部署方式</h4>
-          <p>npm 全局安装或 Docker 容器部署，配置统一存放在 <code>~/.zcode-prompt-sanitizer/</code>。</p>
+          <p>npm 全局安装或 Docker 容器部署，配置统一存放在 <code>~/.zcode-prompt-sanitizer/</code>，支持 <code>--daemon</code> 后台常驻。</p>
         </div>
         <div class="feature-card">
           <div class="icon">🔒</div>
@@ -435,6 +472,13 @@
           <p>默认绑定 127.0.0.1，纯本地工具不暴露到网络。管理台不做鉴权，不过度设计。</p>
         </div>
       </div>
+
+      <h3>可选修复：SSE 响应规整（Response Fixes）</h3>
+      <p>针对上面的「问题二」，代理可以在转发 SSE 响应时<strong>剥除腾讯注入的空字段</strong>（<code>tool_calls: []</code>、<code>finish_reason: ""</code>、空 <code>content</code> 等），让 ZCode 内置的旧版 SDK 不再误判「思考结束」。只删除空字段，其余内容字节级原样透传。<strong>默认关闭</strong>，按需开启：</p>
+      <pre><code># ~/.zcode-prompt-sanitizer/config.yaml
+responseFixes:
+  stripEmptyDeltaFields: true   # 修复腾讯思考块碎裂，默认 false</code></pre>
+      <p>也可以打开管理台（<code>http://127.0.0.1:18790/__zps__</code>），在 <strong>Response Fixes</strong> 区域一键开关——即时生效，并自动写回配置文件持久化。</p>
     </div>
   </section>
 
@@ -511,14 +555,15 @@ rules:
           <button data-tab="docker">Docker</button>
         </div>
         <div class="tab-panel active" id="tab-npm">
-          <pre><code># 全局安装
+          <pre><code># 推荐：后台守护模式，启动后终端立即可用
+npx @honlnk/zcode-prompt-sanitizer@latest --daemon
+
+# 停止后台代理
+npx @honlnk/zcode-prompt-sanitizer@latest --stop
+
+# 或全局安装后使用（zps / zps --daemon / zps --stop）
 npm install -g @honlnk/zcode-prompt-sanitizer
-
-# 启动（内置默认规则，开箱即用）
-zps
-
-# 或临时运行
-npx @honlnk/zcode-prompt-sanitizer</code></pre>
+zps --daemon</code></pre>
         </div>
         <div class="tab-panel" id="tab-docker">
           <pre><code># docker compose
@@ -541,7 +586,11 @@ upstreams:
   # 把请求转发到腾讯 Copilot（唯一的 upstream 会自动路由，无需额外 header）
   workbuddy:
     target: https://copilot.tencent.com/v2
-    changeHost: true</code></pre>
+    changeHost: true
+
+# 可选：修复腾讯「思考块碎裂」（默认关，也可在管理台一键开关）
+responseFixes:
+  stripEmptyDeltaFields: true</code></pre>
 
       <h3>3. 修改 ZCode 的 provider 地址</h3>
       <p>在 ZCode 设置里，把供应商的 Base URL 从真实地址改成代理地址：</p>
@@ -552,8 +601,14 @@ upstreams:
       </div>
 
       <div class="callout callout-success">
-        <strong>完成！</strong>现在 ZCode 的请求会先经过代理改写触发词，再转发到腾讯。在 <code>http://127.0.0.1:18790/__zps__</code> 可以打开管理台查看实时匹配统计。
+        <strong>完成！</strong>现在 ZCode 的请求会先经过代理改写触发词，再转发到腾讯。在 <code>http://127.0.0.1:18790/__zps__</code> 可以打开管理台查看实时匹配统计、切换响应修复开关。
       </div>
+
+      <h3>后台常驻（daemon 模式）</h3>
+      <p>日常使用推荐守护模式：打印启动 banner 后终端立即可用，<strong>关掉终端代理仍在运行</strong>。</p>
+      <pre><code>zps --daemon   # 后台启动
+zps --stop     # 优雅停止（通过 pidfile 发送 SIGTERM）</code></pre>
+      <p>状态文件存放在 <code>~/.zcode-prompt-sanitizer/</code>：<code>zps.pid</code>（进程号）、<code>zps.log</code>（运行日志，超过 5MB 自动轮转为 <code>zps.log.1</code>，只保留两代，不会无限占磁盘）。</p>
 
       <h3>CLI 参数</h3>
       <table>
@@ -562,8 +617,12 @@ upstreams:
           <tr><td><code>--config &lt;path&gt;</code></td><td><code>ZPS_CONFIG</code></td><td>—</td><td>配置文件路径</td></tr>
           <tr><td><code>--port &lt;n&gt;</code></td><td><code>ZPS_PORT</code></td><td><code>18790</code></td><td>监听端口</td></tr>
           <tr><td><code>--host &lt;addr&gt;</code></td><td><code>ZPS_HOST</code></td><td><code>127.0.0.1</code></td><td>绑定地址</td></tr>
+          <tr><td><code>-d, --daemon</code></td><td><code>ZPS_DAEMON=1</code></td><td>关</td><td>后台守护模式运行</td></tr>
+          <tr><td><code>--stop</code></td><td>—</td><td>—</td><td>停止后台守护进程</td></tr>
           <tr><td><code>--verbose</code></td><td><code>ZPS_VERBOSE=1</code></td><td>关</td><td>打印每个请求的日志</td></tr>
           <tr><td><code>--no-dashboard</code></td><td><code>ZPS_DASHBOARD=0</code></td><td>开</td><td>关闭管理台</td></tr>
+          <tr><td><code>-v, --version</code></td><td>—</td><td>—</td><td>打印版本号</td></tr>
+          <tr><td><code>-h, --help</code></td><td>—</td><td>—</td><td>显示帮助</td></tr>
         </tbody>
       </table>
     </div>
@@ -573,8 +632,8 @@ upstreams:
   <section id="faq">
     <div class="container">
       <p class="section-title">常见问题</p>
-      <h2>ZCode 敏感内容拦截 · 常见问题</h2>
-      <p class="section-desc">关于「系统检测到您当前输入的信息存在敏感内容」和 WAF 误拦截的高频疑问。</p>
+      <h2>ZCode 接入腾讯 API · 常见问题</h2>
+      <p class="section-desc">关于「系统检测到您当前输入的信息存在敏感内容」的 WAF 误拦截、以及思考块碎裂的高频疑问。</p>
 
       <h3>为什么 ZCode 连接 WorkBuddy 后提示「系统检测到您当前输入的信息存在敏感内容」？</h3>
       <p>这是<strong>腾讯 WAF 的误报</strong>，不是你输入的内容有问题。根因是 ZCode 在 git 项目里发消息时，会自动把 git 上下文拼进 system prompt，其中 <code>"Main branch (you will usually use this for PRs)"</code> 这句被 WAF 模式匹配成 prompt 注入 / 越狱语句，整个请求在网关层就被拦下，模型根本没处理（被拦请求的 <code>tokens = 0</code>）。</p>
@@ -584,6 +643,12 @@ upstreams:
 
       <h3>zcode-prompt-sanitizer 会影响模型理解吗？</h3>
       <p>不会。它把触发 WAF 的句子（如 <code>Main branch (you will usually use this for PRs):</code>）改写成中性表述（<code>Default git branch:</code>）。<strong>分支名仍然保留</strong>，模型照样能看到，只是去掉了触发 WAF 的句式，功能不受影响。</p>
+
+      <h3>ZCode 用腾讯模型时，思考过程碎成几十个「思考 · 持续了几秒」小块，怎么修复？</h3>
+      <p>这不是模型的问题，也不是你的设置问题。腾讯的 SSE 响应在<strong>每个 chunk</strong> 里都携带空的 <code>tool_calls: []</code> 和 <code>finish_reason: ""</code>；ZCode 内置的旧版 AI SDK 用 <code>!= null</code> 判断字段是否存在，空数组和空字符串都"非 null"，于是每个 chunk 都触发一次「思考结束」，思考被切成一个个 token 大小的碎片。开启本工具的<strong>响应修复开关</strong>即可：管理台 Response Fixes 一键打开，或在配置里设 <code>responseFixes.stripEmptyDeltaFields: true</code>，代理转发时剥除这些空字段，思考恢复为完整的一块。</p>
+
+      <h3>如何让代理在后台常驻运行？</h3>
+      <p>用守护模式启动：<code>zps --daemon</code>（或 <code>npx @honlnk/zcode-prompt-sanitizer@latest --daemon</code>），打印启动信息后终端立即可用，关闭终端代理也继续运行；<code>zps --stop</code> 优雅停止。日志写入 <code>~/.zcode-prompt-sanitizer/zps.log</code>，超过 5MB 自动轮转，只保留两代。</p>
 
       <h3>只支持腾讯 Copilot / WorkBuddy 吗？</h3>
       <p>不。它是通用代理，规则完全可配置。内置默认规则覆盖已知的腾讯 WAF 触发词；你可以自定义规则处理任意供应商的内容审查拦截。只要供应商兼容 OpenAI Chat Completions 接口就能用。</p>
