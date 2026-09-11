@@ -3,15 +3,20 @@ import { StringDecoder } from 'node:string_decoder';
 import type { Buffer } from 'node:buffer';
 
 /**
- * SSE normalization: strip empty-string placeholder fields from
- * OpenAI-style chat.completion.chunk deltas.
+ * SSE normalization: strip empty placeholder fields from
+ * OpenAI-style chat.completion.chunk events.
  *
- * Some providers (Tencent hunyuan via copilot.tencent.com) emit deltas like
- *   {"delta": {"content": "", "reasoning_content": "We", ...}}
- * on every chunk. Clients built on the Vercel AI SDK (ZCode) treat ANY text
- * delta — including an empty string — as the end of the current reasoning
- * block, so a single thinking phase gets split into one block per chunk and
- * the UI renders a stack of tiny "thinking" segments.
+ * Some providers (Tencent hunyuan via copilot.tencent.com) decorate every
+ * chunk with placeholders:
+ *   {"delta": {"content": "", "reasoning_content": "We", "tool_calls": [],
+ *              "function_call": null, "refusal": ""}, "finish_reason": ""}
+ * The `tool_calls: []` is the nasty one: the OpenAI-compatible stream handler
+ * bundled in some clients (older Vercel AI SDK, as shipped in ZCode) treats
+ * `delta.tool_calls != null` as "tool calling started" and closes the active
+ * reasoning block — an empty array included — so a single thinking phase gets
+ * split into one reasoning block per chunk and the UI renders a stack of tiny
+ * "thinking" segments. Empty-string `finish_reason` similarly fakes a finish
+ * signal on every chunk.
  *
  * The transform parses SSE events (buffering across arbitrary TCP chunk
  * boundaries, UTF-8 safe), and only touches events whose data payload parses
@@ -37,7 +42,15 @@ export function stripEmptyDeltaFieldsFromChunk(chunk: unknown): number {
   if (!Array.isArray(choices)) return 0;
   let removed = 0;
   for (const choice of choices) {
-    const delta = (choice as { delta?: unknown } | null)?.delta;
+    if (!choice || typeof choice !== 'object') continue;
+    const c = choice as Record<string, unknown>;
+    // "" masquerades as a finish signal (`finish_reason != null` is true for
+    // ""), making clients record a bogus finish reason on every chunk.
+    if (c.finish_reason === '') {
+      delete c.finish_reason;
+      removed++;
+    }
+    const delta = c.delta;
     if (!delta || typeof delta !== 'object') continue;
     const d = delta as Record<string, unknown>;
     if (d.content === '') {
@@ -46,6 +59,13 @@ export function stripEmptyDeltaFieldsFromChunk(chunk: unknown): number {
     }
     if (d.reasoning_content === '') {
       delete d.reasoning_content;
+      removed++;
+    }
+    // The real thinking-block splitter: older AI SDK builds run their
+    // tool-call branch on `tool_calls != null`, which an empty array
+    // satisfies — closing the active reasoning block on every chunk.
+    if (Array.isArray(d.tool_calls) && d.tool_calls.length === 0) {
+      delete d.tool_calls;
       removed++;
     }
     const fc = d.function_call;

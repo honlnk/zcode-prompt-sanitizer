@@ -336,15 +336,19 @@ describe('response fix: stripEmptyDeltaFields', () => {
             choices: [
               {
                 index: 0,
+                logprobs: null,
+                finish_reason: '',
                 delta: {
                   role: 'assistant',
                   content,
                   reasoning_content: reasoning,
                   function_call: null,
                   refusal: '',
+                  tool_calls: [],
                 },
               },
             ],
+            usage: null,
           })}\n\n`;
         res.write(chunk('We'));
         res.write(chunk(' think'));
@@ -398,6 +402,9 @@ describe('response fix: stripEmptyDeltaFields', () => {
     const first = JSON.parse(events[0]!.replace(/^data: /, ''));
     expect(first.choices[0].delta.content).toBeUndefined();
     expect(first.choices[0].delta.reasoning_content).toBe('We');
+    // The actual thinking-block splitter in older AI SDK builds.
+    expect(first.choices[0].delta.tool_calls).toBeUndefined();
+    expect(first.choices[0].finish_reason).toBeUndefined();
     const third = JSON.parse(events[2]!.replace(/^data: /, ''));
     expect(third.choices[0].delta.content).toBe('答案');
     expect(third.choices[0].delta.reasoning_content).toBeUndefined();
@@ -409,6 +416,8 @@ describe('response fix: stripEmptyDeltaFields', () => {
     expect(res.status).toBe(200);
     expect(res.body).toContain('"content":""');
     expect(res.body).toContain('"reasoning_content":""');
+    expect(res.body).toContain('"tool_calls":[]');
+    expect(res.body).toContain('"finish_reason":""');
   });
 });
 
