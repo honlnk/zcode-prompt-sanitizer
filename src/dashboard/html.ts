@@ -255,7 +255,7 @@ export function dashboardHtml(version: string): string {
         <div class="toggle" id="fixStrip"></div>
         <div>
           <div class="fix-title">Strip empty delta fields<code>stripEmptyDeltaFields</code></div>
-          <div class="rule-desc">移除 SSE 流中 delta 的空字符串占位字段（<code>content:""</code> / <code>reasoning_content:""</code> / 空 <code>function_call</code>）。修复腾讯系模型（hy 系列）在 ZCode 里一个思考阶段被拆成几十段"思考"的问题。即时生效并写入配置文件，默认关闭。</div>
+          <div class="rule-desc">移除 SSE chunk 中的空占位字段（<code>content:""</code> / <code>reasoning_content:""</code> / <code>tool_calls:[]</code> / 空 <code>function_call</code> / 空 <code>finish_reason</code>）。修复腾讯系模型（hy 系列）在 ZCode 里一个思考阶段被拆成几十段"思考"的问题——元凶是每个 chunk 都带的 <code>tool_calls:[]</code> 会让客户端反复关闭思考块。即时生效并写入配置文件，默认关闭。</div>
         </div>
       </div>
     </div>

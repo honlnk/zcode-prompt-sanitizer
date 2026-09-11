@@ -69,13 +69,14 @@ export interface SanitizerConfig {
 
 export interface ResponseFixesConfig {
   /**
-   * Strip empty-string placeholder fields from SSE chat-chunk deltas
-   * (`content: ""`, `reasoning_content: ""`, and the empty
-   * `function_call: {name:"",arguments:""}` placeholder). Some providers
-   * (Tencent hunyuan via copilot.tencent.com) send these on every chunk;
-   * clients like ZCode treat each empty `content` delta as the end of the
-   * current reasoning block, splitting one thinking phase into dozens of
-   * "thinking" UI segments.
+   * Strip empty placeholder fields from SSE chat-chunk events:
+   * `content: ""`, `reasoning_content: ""`, empty `tool_calls: []`,
+   * empty `function_call: {name:"",arguments:""}`, and empty-string
+   * `finish_reason`. Some providers (Tencent hunyuan via
+   * copilot.tencent.com) decorate every chunk with these; clients on older
+   * Vercel AI SDK builds (ZCode) treat `tool_calls != null` as tool-call
+   * start and close the active reasoning block on every chunk, splitting one
+   * thinking phase into dozens of "thinking" UI segments.
    */
   stripEmptyDeltaFields: boolean;
 }

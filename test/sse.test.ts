@@ -28,25 +28,33 @@ const tencentChunk = (reasoning: string) =>
     choices: [
       {
         index: 0,
+        logprobs: null,
+        finish_reason: '',
         delta: {
           role: 'assistant',
           content: '',
           reasoning_content: reasoning,
           function_call: null,
           refusal: '',
+          tool_calls: [],
+          extra_fields: null,
         },
       },
     ],
+    usage: null,
   })}\n\n`;
 
 describe('stripEmptyDeltaFieldsFromChunk', () => {
-  it('removes empty-string content / reasoning_content / empty function_call', () => {
+  it('removes empty content / reasoning_content / tool_calls:[] / function_call / finish_reason', () => {
     const chunk = {
       choices: [
         {
+          index: 0,
+          finish_reason: '',
           delta: {
             content: '',
             reasoning_content: 'We',
+            tool_calls: [],
             function_call: { name: '', arguments: '' },
             refusal: '',
           },
@@ -54,29 +62,32 @@ describe('stripEmptyDeltaFieldsFromChunk', () => {
       ],
     };
     const removed = stripEmptyDeltaFieldsFromChunk(chunk);
-    expect(removed).toBe(2); // content:'' and the empty function_call; refusal stays
-    expect(chunk.choices[0].delta).toEqual({
-      reasoning_content: 'We',
-      refusal: '',
+    expect(removed).toBe(4); // finish_reason, content, tool_calls, function_call; reasoning_content stays
+    expect(chunk.choices[0]).toEqual({
+      index: 0,
+      delta: { reasoning_content: 'We', refusal: '' },
     });
   });
 
-  it('keeps non-empty content and real function calls', () => {
+  it('keeps non-empty content, real tool calls, and real finish reasons', () => {
     const chunk = {
       choices: [
         {
+          finish_reason: 'stop',
           delta: {
             content: 'hello',
             reasoning_content: '',
-            function_call: { name: 'f', arguments: '{}' },
+            tool_calls: [{ index: 0, id: 'call_1', function: { name: 'f', arguments: '' } }],
           },
         },
       ],
     };
     const removed = stripEmptyDeltaFieldsFromChunk(chunk);
     expect(removed).toBe(1); // only reasoning_content: ''
-    expect(chunk.choices[0].delta.content).toBe('hello');
-    expect(chunk.choices[0].delta.function_call).toEqual({ name: 'f', arguments: '{}' });
+    const choice = chunk.choices[0];
+    expect(choice.finish_reason).toBe('stop');
+    expect(choice.delta.content).toBe('hello');
+    expect(choice.delta.tool_calls).toHaveLength(1);
   });
 
   it('ignores non-chat shapes', () => {
@@ -126,9 +137,9 @@ describe('createEmptyDeltaStripper (stream)', () => {
       `data: ${JSON.stringify({ choices: [{ delta: { content: '2+2', reasoning_content: '' } }] })}\n\n` +
       'data: [DONE]\n\n';
     const { out, fixed } = await runThrough([stream]);
-    // 2 reasoning chunks strip content:""; the content chunk strips
-    // reasoning_content:"" → 3 fields total.
-    expect(fixed).toBe(3);
+    // Each reasoning chunk strips content:"" + tool_calls:[] + finish_reason:""
+    // = 3 fields × 2 chunks; the content chunk strips reasoning_content:"" = 1.
+    expect(fixed).toBe(7);
     expect(out).toContain('[DONE]');
     const events = out.split('\n\n').filter(Boolean);
     expect(events.length).toBe(4);
@@ -165,7 +176,7 @@ describe('createEmptyDeltaStripper (stream)', () => {
       for (const b of bufs) t.write(b);
       t.end();
     });
-    expect(fixed).toBe(1);
+    expect(fixed).toBe(3); // content:"" + tool_calls:[] + finish_reason:""
   });
 
   it('passes non-SSE / non-JSON events through untouched', async () => {
@@ -178,7 +189,7 @@ describe('createEmptyDeltaStripper (stream)', () => {
   it('handles a trailing event without blank-line terminator', async () => {
     const stream = tencentChunk('end').slice(0, -2); // drop final \n\n
     const { out, fixed } = await runThrough([stream]);
-    expect(fixed).toBe(1);
+    expect(fixed).toBe(3);
     const parsed = JSON.parse(out.split('\n\n')[0]!.replace(/^data: /, ''));
     expect(parsed.choices[0].delta.reasoning_content).toBe('end');
   });
