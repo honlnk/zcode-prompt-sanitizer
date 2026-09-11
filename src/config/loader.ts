@@ -193,6 +193,13 @@ function mergeConfig(
     out.upstreams = ups as SanitizerConfig['upstreams'];
   }
 
+  if (obj.responseFixes && typeof obj.responseFixes === 'object') {
+    const rf = obj.responseFixes as Record<string, unknown>;
+    if (typeof rf.stripEmptyDeltaFields === 'boolean') {
+      out.responseFixes.stripEmptyDeltaFields = rf.stripEmptyDeltaFields;
+    }
+  }
+
   // `rules`, if present, fully replaces the default ruleset.
   if (obj.rules !== undefined) {
     out.rules = validateRules(obj.rules, source);

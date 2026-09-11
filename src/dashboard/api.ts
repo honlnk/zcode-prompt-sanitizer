@@ -18,6 +18,8 @@ export interface DashboardApiDeps {
  * Minimal JSON API used by the dashboard web UI:
  *   GET  /__zps__/api/status   — version, uptime, rules summary, stats
  *   GET  /__zps__/api/rules    — full rules list
+ *   GET  /__zps__/api/settings — response-fix toggles
+ *   POST /__zps__/api/settings — update response-fix toggles (persisted)
  *   PUT  /__zps__/api/rules    — replace the entire ruleset (body: {rules:[]})
  *   POST /__zps__/api/rules    — append a single rule
  *   POST /__zps__/api/rule/:id — toggle/update a rule (body: partial rule)
@@ -57,6 +59,20 @@ export async function handleDashboardRoute(
     }
     if (path === 'rules' && method === 'GET') {
       return ok(res, { rules: deps.config.rules });
+    }
+    if (path === 'settings' && method === 'GET') {
+      return ok(res, { responseFixes: deps.config.responseFixes });
+    }
+    if (path === 'settings' && method === 'POST') {
+      const body = await readJson(req);
+      const rf = body?.responseFixes ?? {};
+      // Merge known boolean flags only; unknown keys are ignored so older
+      // dashboards can't wedge unknown state into the config file.
+      if (typeof rf.stripEmptyDeltaFields === 'boolean') {
+        deps.config.responseFixes.stripEmptyDeltaFields = rf.stripEmptyDeltaFields;
+      }
+      deps.persist?.(deps.config);
+      return ok(res, { responseFixes: deps.config.responseFixes });
     }
     if (path === 'rules' && method === 'PUT') {
       const body = await readJson(req);

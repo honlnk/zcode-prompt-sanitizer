@@ -1,7 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { request } from 'node:http';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { startServer, waitForListening } from '../src/server.js';
 import { createDefaultConfig } from '../src/config/defaults.js';
+import { loadConfig } from '../src/config/loader.js';
 import type { SanitizerConfig } from '../src/types.js';
 
 let proxyPort = 0;
@@ -44,7 +48,9 @@ function apiCall(
 }
 
 beforeEach(async () => {
-  const running = startServer({ ...cfg, rules: cfg.rules.map((r) => ({ ...r })) }, {
+  // structuredClone: settings tests mutate config.responseFixes in place, and a
+  // shallow spread would leak that state into the next test's server.
+  const running = startServer(structuredClone(cfg), {
     configPath: null,
     quiet: true,
   });
@@ -137,5 +143,71 @@ describe('dashboard API', () => {
     expect(res.status).toBe(200);
     expect(res.body).toContain('<!doctype html>');
     expect(res.body).toContain('zcode-prompt-sanitizer');
+  });
+
+  it('GET /settings returns response-fix toggles (default off)', async () => {
+    const res = await apiCall('GET', '/settings');
+    expect(res.status).toBe(200);
+    expect(res.body.responseFixes.stripEmptyDeltaFields).toBe(false);
+  });
+
+  it('POST /settings flips the toggle, persists it, and it survives a reload', async () => {
+    const on = await apiCall('POST', '/settings', {
+      responseFixes: { stripEmptyDeltaFields: true },
+    });
+    expect(on.status).toBe(200);
+    expect(on.body.responseFixes.stripEmptyDeltaFields).toBe(true);
+
+    // The running server's config object was mutated in place.
+    const back = await apiCall('GET', '/settings');
+    expect(back.body.responseFixes.stripEmptyDeltaFields).toBe(true);
+  });
+
+  it('POST /settings persists responseFixes to the config file', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'zps-settings-'));
+    const configPath = join(dir, 'config.yaml');
+    writeFileSync(configPath, 'port: 0\n', 'utf8');
+
+    const running = startServer(
+      { ...createDefaultConfig(), port: 0, upstreams: {} },
+      { configPath, quiet: true },
+    );
+    await waitForListening(running.proxy);
+    const port = (running.proxy.address() as any).port;
+
+    const payload = Buffer.from(
+      JSON.stringify({ responseFixes: { stripEmptyDeltaFields: true } }),
+    );
+    await new Promise<void>((resolve, reject) => {
+      const req = request(
+        {
+          host: '127.0.0.1',
+          port,
+          method: 'POST',
+          path: '/__zps__/api/settings',
+          headers: { 'content-type': 'application/json', 'content-length': payload.length },
+        },
+        (r) => {
+          r.resume();
+          r.on('end', () => resolve());
+        },
+      );
+      req.on('error', reject);
+      req.end(payload);
+    });
+    await running.close();
+
+    const reloaded = loadConfig(configPath);
+    expect(reloaded.responseFixes.stripEmptyDeltaFields).toBe(true);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('POST /settings ignores unknown / non-boolean flags', async () => {
+    const res = await apiCall('POST', '/settings', {
+      responseFixes: { stripEmptyDeltaFields: 'yes', somethingElse: true },
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.responseFixes.stripEmptyDeltaFields).toBe(false);
+    expect(res.body.responseFixes.somethingElse).toBeUndefined();
   });
 });

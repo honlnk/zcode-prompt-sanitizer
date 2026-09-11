@@ -319,6 +319,99 @@ describe('proxy without configured upstream (Host-header passthrough)', () => {
   });
 });
 
+describe('response fix: stripEmptyDeltaFields', () => {
+  /** Fake upstream emitting Tencent-style SSE deltas with empty placeholders. */
+  function startTencentStyleUpstream(): Promise<{
+    server: Server;
+    port: number;
+    close: () => Promise<void>;
+  }> {
+    return new Promise((resolve) => {
+      const server = createServer((_req, res) => {
+        res.writeHead(200, { 'content-type': 'text/event-stream' });
+        const chunk = (reasoning: string, content = '') =>
+          `data: ${JSON.stringify({
+            id: 'gen-1',
+            object: 'chat.completion.chunk',
+            choices: [
+              {
+                index: 0,
+                delta: {
+                  role: 'assistant',
+                  content,
+                  reasoning_content: reasoning,
+                  function_call: null,
+                  refusal: '',
+                },
+              },
+            ],
+          })}\n\n`;
+        res.write(chunk('We'));
+        res.write(chunk(' think'));
+        res.write(
+          `data: ${JSON.stringify({
+            choices: [{ index: 0, delta: { content: '答案', reasoning_content: '' } }],
+          })}\n\n`,
+        );
+        res.write('data: [DONE]\n\n');
+        res.end();
+      });
+      server.listen(0, '127.0.0.1', () => {
+        const port = (server.address() as any).port;
+        resolve({
+          server,
+          port,
+          close: () => new Promise((r) => server.close(() => r())),
+        });
+      });
+    });
+  }
+
+  async function runProxyWithFix(enabled: boolean) {
+    const up = await startTencentStyleUpstream();
+    const config: SanitizerConfig = {
+      ...createDefaultConfig(),
+      port: 0,
+      dashboard: { enabled: false, port: 0 },
+      upstreams: { tencent: { target: `http://127.0.0.1:${up.port}` } },
+      rules: [],
+      responseFixes: { stripEmptyDeltaFields: enabled },
+    };
+    const running = startServer(config, { configPath: null, quiet: true });
+    await waitForListening(running.proxy);
+    const proxyPort = (running.proxy.address() as any).port;
+    const res = await httpRequestAsync(
+      proxyPort,
+      { messages: [{ role: 'user', content: 'hi' }] },
+      { 'x-zps-provider': 'tencent' },
+    );
+    await running.close();
+    await up.close();
+    return res;
+  }
+
+  it('strips empty delta fields when the toggle is on', async () => {
+    const res = await runProxyWithFix(true);
+    expect(res.status).toBe(200);
+    const events = res.body.split('\n\n').filter(Boolean);
+    expect(events.length).toBe(4); // 3 chunks + [DONE]
+    const first = JSON.parse(events[0]!.replace(/^data: /, ''));
+    expect(first.choices[0].delta.content).toBeUndefined();
+    expect(first.choices[0].delta.reasoning_content).toBe('We');
+    const third = JSON.parse(events[2]!.replace(/^data: /, ''));
+    expect(third.choices[0].delta.content).toBe('答案');
+    expect(third.choices[0].delta.reasoning_content).toBeUndefined();
+    expect(events[3]).toBe('data: [DONE]');
+  });
+
+  it('passes the stream through byte-identical when the toggle is off', async () => {
+    const res = await runProxyWithFix(false);
+    expect(res.status).toBe(200);
+    expect(res.body).toContain('"content":""');
+    expect(res.body).toContain('"reasoning_content":""');
+  });
+});
+
 describe('single-upstream routing (no client hints required)', () => {
   // Regression test: when exactly one upstream is configured, the proxy must
   // forward to it unconditionally — no x-zps-provider header, no Authorization
