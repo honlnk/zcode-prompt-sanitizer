@@ -1,6 +1,6 @@
 {
   "name": "@honlnk/zcode-prompt-sanitizer",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Local reverse proxy that rewrites sensitive prompt fragments injected by ZCode before they reach third-party API providers, preventing WAF false positives.",
   "type": "module",
   "main": "dist/index.js",
