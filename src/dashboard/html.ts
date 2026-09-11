@@ -224,6 +224,11 @@ export function dashboardHtml(version: string): string {
   .toast.show { transform: translateY(0); opacity: 1; }
   .toast.error { border-color: var(--red); color: var(--red); }
 
+  /* ---- Response fix row ---- */
+  .fix-row { display: flex; gap: 14px; align-items: center; padding: 16px; }
+  .fix-row .fix-title { font-weight: 600; font-size: 14px; }
+  .fix-row .fix-title code { margin-left: 6px; font-size: 11.5px; }
+
   /* ---- Responsive ---- */
   @media (max-width: 720px) {
     .stats { grid-template-columns: repeat(2, 1fr); }
@@ -241,6 +246,20 @@ export function dashboardHtml(version: string): string {
 </header>
 <main>
   <section class="stats" id="stats"></section>
+  <section>
+    <div class="toolbar">
+      <h2>Response Fixes</h2>
+    </div>
+    <div class="card">
+      <div class="fix-row">
+        <div class="toggle" id="fixStrip"></div>
+        <div>
+          <div class="fix-title">Strip empty delta fields<code>stripEmptyDeltaFields</code></div>
+          <div class="rule-desc">移除 SSE 流中 delta 的空字符串占位字段（<code>content:""</code> / <code>reasoning_content:""</code> / 空 <code>function_call</code>）。修复腾讯系模型（hy 系列）在 ZCode 里一个思考阶段被拆成几十段"思考"的问题。即时生效并写入配置文件，默认关闭。</div>
+        </div>
+      </div>
+    </div>
+  </section>
   <section>
     <div class="toolbar">
       <h2>Rewrite Rules <span style="color:var(--text-muted);font-weight:400">(<span id="ruleCount">0</span>)</span></h2>
@@ -327,6 +346,11 @@ function ruleRow(r) {
     '<td class="col-actions"><div class="row-actions"><button class="ghost" data-edit="'+r.id+'">Edit</button><button class="danger" data-del="'+r.id+'">Delete</button></div></td>' +
     '</tr>';
 }
+async function loadSettings() {
+  const s = await jget('/settings');
+  const on = !!(s.responseFixes && s.responseFixes.stripEmptyDeltaFields);
+  $('fixStrip').className = 'toggle' + (on ? ' on' : '');
+}
 async function refresh() {
   const s = await jget('/status');
   window.__stats = s.stats || {};
@@ -336,6 +360,15 @@ async function refresh() {
 document.addEventListener('click', async (e) => {
   const t = e.target.closest('button, .toggle');
   if (!t) return;
+  if (t.id === 'fixStrip') {
+    const on = !t.classList.contains('on');
+    try {
+      await jsend('POST', '/settings', { responseFixes: { stripEmptyDeltaFields: on } });
+      await loadSettings();
+      toast(on ? 'Fix enabled' : 'Fix disabled');
+    } catch(err) { toast(err.message, true); }
+    return;
+  }
   const toggleId = t.getAttribute('data-toggle');
   if (toggleId) {
     const rule = rules.find(r => r.id === toggleId);
@@ -375,7 +408,7 @@ function editRule(rule) {
 }
 
 (async () => {
-  try { await loadStatus(); await refresh(); setInterval(loadStatus, 5000); }
+  try { await loadStatus(); await loadSettings(); await refresh(); setInterval(loadStatus, 5000); }
   catch(e) { $('health').classList.add('offline'); $('health').textContent = 'offline'; toast(e.message, true); }
 })();
 </script>

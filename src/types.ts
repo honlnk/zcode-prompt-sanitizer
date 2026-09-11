@@ -63,6 +63,21 @@ export interface SanitizerConfig {
   maxBodyBytes: number;
   /** Enable verbose request logging to stdout. */
   verbose: boolean;
+  /** Response-side normalizations, each independently toggleable. */
+  responseFixes: ResponseFixesConfig;
+}
+
+export interface ResponseFixesConfig {
+  /**
+   * Strip empty-string placeholder fields from SSE chat-chunk deltas
+   * (`content: ""`, `reasoning_content: ""`, and the empty
+   * `function_call: {name:"",arguments:""}` placeholder). Some providers
+   * (Tencent hunyuan via copilot.tencent.com) send these on every chunk;
+   * clients like ZCode treat each empty `content` delta as the end of the
+   * current reasoning block, splitting one thinking phase into dozens of
+   * "thinking" UI segments.
+   */
+  stripEmptyDeltaFields: boolean;
 }
 
 export interface DashboardConfig {

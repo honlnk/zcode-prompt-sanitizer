@@ -136,6 +136,14 @@ dashboard:
   enabled: true
   port: 0                  # 0 = serve on the proxy port under /__zps__
 
+# Response-side normalizations (all default OFF; toggle in the dashboard too).
+responseFixes:
+  # Strip empty-string placeholder fields from SSE chat-chunk deltas
+  # (content:"" / reasoning_content:"" / empty function_call). Tencent hunyuan
+  # (copilot.tencent.com) sends these on every chunk, which makes ZCode split
+  # one thinking phase into dozens of "思考" segments. Enable if you see that.
+  stripEmptyDeltaFields: false
+
 upstreams:
   workbuddy:
     target: https://copilot.tencent.com
@@ -169,6 +177,25 @@ rules:
 | `description` | string   | Optional, shown in the dashboard.                                 |
 
 Rules apply **in order**; replacements can chain (rule A's output is visible to rule B in the same pass). **All** occurrences of a match are replaced.
+
+### Response fixes
+
+Response-side normalizations, each off by default and toggleable live from the
+dashboard (**Response Fixes** section) — changes apply immediately and are
+persisted to the config file.
+
+| Flag                             | What it does |
+| -------------------------------- | ------------ |
+| `responseFixes.stripEmptyDeltaFields` | For `text/event-stream` responses, remove empty-string placeholder fields from chat-chunk deltas: `content: ""`, `reasoning_content: ""`, and the empty `function_call: {name:"", arguments:""}` placeholder. Events that don't parse as chat chunks (`[DONE]`, comments, other shapes) pass through byte-identical. |
+
+Why it exists: Tencent hunyuan (copilot.tencent.com) sends `content: ""`
+alongside every `reasoning_content` delta. Clients built on the Vercel AI SDK
+(ZCode) treat any text delta — even an empty one — as the end of the current
+reasoning block, so one thinking phase renders as a long stack of tiny
+"思考/thinking" segments. With this fix on, the stream arrives clean and the
+client merges the reasoning into a single block. When enabled, verbose logs
+annotate affected requests with `[sse-fix: N]` (N = fields stripped).
+
 
 ### CLI flags & env vars
 

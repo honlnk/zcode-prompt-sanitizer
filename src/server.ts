@@ -59,8 +59,9 @@ export function startServer(
   const onRequest = (info: RequestInfo) => {
     if (!config.verbose) return;
     const flag = info.changed ? `[rewrote: ${info.firedRuleIds.join(',')}]` : '[passthrough]';
+    const fix = info.responseFixedFields ? ` [sse-fix: ${info.responseFixedFields}]` : '';
     console.log(
-      `${new Date().toISOString()} ${info.method} ${info.url} → ${info.statusCode ?? '???'} ${flag} ${info.durationMs}ms`,
+      `${new Date().toISOString()} ${info.method} ${info.url} → ${info.statusCode ?? '???'} ${flag}${fix} ${info.durationMs}ms`,
     );
   };
 

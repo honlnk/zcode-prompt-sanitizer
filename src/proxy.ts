@@ -2,9 +2,11 @@ import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import type { IncomingMessage, Server, ServerOptions } from 'node:http';
 import { createServer } from 'node:http';
+import { pipeline } from 'node:stream';
 import { Buffer } from 'node:buffer';
 import type { SanitizerConfig, Upstream } from './types.js';
 import { Sanitizer } from './sanitizer.js';
+import { createEmptyDeltaStripper } from './sse.js';
 
 /** Hop-by-hop headers that must NOT be forwarded between client and upstream. */
 const HOP_BY_HOP = new Set([
@@ -35,6 +37,8 @@ export interface RequestInfo {
   firedRuleIds: string[];
   statusCode?: number;
   streamed: boolean;
+  /** Empty delta-placeholder fields stripped from an SSE response (0/undefined = none). */
+  responseFixedFields?: number;
   durationMs: number;
 }
 
@@ -145,14 +149,33 @@ export function createProxyServer(deps: ProxyDeps): Server {
 
           clientRes.writeHead(info.statusCode ?? 200, respHeaders);
           info.streamed = true;
-          // Stream verbatim — SSE chunks pass through unbuffered.
-          upstreamRes.pipe(clientRes);
-          upstreamRes.on('error', () => {
-            if (!clientRes.writableEnded) clientRes.end();
-          });
-          clientRes.on('close', () => {
-            if (!upstreamRes.destroyed) upstreamRes.destroy();
-          });
+
+          // Optional response-side fix: normalize SSE chat chunks. Only kicks
+          // in when the toggle is on AND the upstream speaks SSE; the stream
+          // itself decides per event whether anything needs changing.
+          const respContentType = upstreamRes.headers['content-type'];
+          const fixSse =
+            config.responseFixes?.stripEmptyDeltaFields === true &&
+            typeof respContentType === 'string' &&
+            respContentType.toLowerCase().includes('text/event-stream');
+
+          if (fixSse) {
+            const stripper = createEmptyDeltaStripper((fix) => {
+              info.responseFixedFields =
+                (info.responseFixedFields ?? 0) + fix.fields;
+            });
+            // pipeline destroys all streams on premature close of any of them.
+            pipeline(upstreamRes, stripper, clientRes, () => {});
+          } else {
+            // Stream verbatim — SSE chunks pass through unbuffered.
+            upstreamRes.pipe(clientRes);
+            upstreamRes.on('error', () => {
+              if (!clientRes.writableEnded) clientRes.end();
+            });
+            clientRes.on('close', () => {
+              if (!upstreamRes.destroyed) upstreamRes.destroy();
+            });
+          }
           upstreamRes.on('end', () => {
             info.durationMs = Date.now() - started;
             deps.onRequest?.(info);

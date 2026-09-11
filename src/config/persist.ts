@@ -18,6 +18,7 @@ export function persistConfig(config: SanitizerConfig, path: string | null): voi
       maxBodyBytes: config.maxBodyBytes,
       dashboard: config.dashboard,
       upstreams: config.upstreams,
+      responseFixes: config.responseFixes,
       rules: config.rules,
     };
     const text = path.endsWith('.json')

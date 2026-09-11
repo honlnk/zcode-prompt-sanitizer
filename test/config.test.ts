@@ -50,6 +50,25 @@ describe('loadConfig', () => {
     expect(cfg.port).toBe(18790);
     expect(cfg.host).toBe('127.0.0.1');
     expect(cfg.rules).toHaveLength(BUILTIN_RULES.length);
+    expect(cfg.responseFixes.stripEmptyDeltaFields).toBe(false);
+  });
+
+  it('loads responseFixes.stripEmptyDeltaFields from the config file', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'zps-'));
+    const file = join(dir, 'config.yaml');
+    writeFileSync(file, 'responseFixes:\n  stripEmptyDeltaFields: true\n', 'utf8');
+    const cfg = loadConfig(file);
+    expect(cfg.responseFixes.stripEmptyDeltaFields).toBe(true);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('ignores a non-boolean stripEmptyDeltaFields value', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'zps-'));
+    const file = join(dir, 'config.yaml');
+    writeFileSync(file, 'responseFixes:\n  stripEmptyDeltaFields: "yes"\n', 'utf8');
+    const cfg = loadConfig(file);
+    expect(cfg.responseFixes.stripEmptyDeltaFields).toBe(false);
+    rmSync(dir, { recursive: true, force: true });
   });
 
   it('treats an empty config file as defaults instead of crashing', () => {
