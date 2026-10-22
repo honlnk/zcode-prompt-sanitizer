@@ -419,6 +419,74 @@ describe('response fix: stripEmptyDeltaFields', () => {
     expect(res.body).toContain('"tool_calls":[]');
     expect(res.body).toContain('"finish_reason":""');
   });
+
+  // Regression test: a client abort racing the upstream SSE response crashed
+  // the whole proxy — pipeline() into the already-destroyed clientRes throws
+  // ERR_STREAM_UNABLE_TO_PIPE synchronously, and uncaught it took the daemon
+  // down (6 times in the wild within two weeks). The proxy must survive.
+  it('survives a client abort racing the upstream SSE response', async () => {
+    // Upstream that waits 100ms before sending SSE headers, so the client
+    // abort lands while the response is still in flight.
+    const slowSse = await new Promise<{ port: number; close: () => Promise<void> }>(
+      (resolve) => {
+        const server = createServer((_req, res) => {
+          setTimeout(() => {
+            res.writeHead(200, { 'content-type': 'text/event-stream' });
+            res.write('data: {"choices":[]}\n\n');
+            res.end();
+          }, 100);
+        });
+        server.listen(0, '127.0.0.1', () => {
+          resolve({
+            port: (server.address() as any).port,
+            close: () => new Promise((r) => server.close(() => r())),
+          });
+        });
+      },
+    );
+
+    const config: SanitizerConfig = {
+      ...createDefaultConfig(),
+      port: 0,
+      dashboard: { enabled: false, port: 0 },
+      upstreams: { tencent: { target: `http://127.0.0.1:${slowSse.port}` } },
+      rules: [],
+      responseFixes: { stripEmptyDeltaFields: true },
+    };
+    const running = startServer(config, { configPath: null, quiet: true });
+    await waitForListening(running.proxy);
+    const proxyPort = (running.proxy.address() as any).port;
+
+    // Fire a request and abort it 20ms in — before the upstream responds.
+    const aborting = request({
+      host: '127.0.0.1',
+      port: proxyPort,
+      method: 'POST',
+      path: '/v1/chat/completions',
+      headers: {
+        'content-type': 'application/json',
+        'x-zps-provider': 'tencent',
+      },
+    });
+    aborting.on('error', () => {}); // ECONNRESET after destroy() is expected
+    aborting.end(JSON.stringify({ messages: [{ role: 'user', content: 'hi' }] }));
+    await new Promise((r) => setTimeout(r, 20));
+    aborting.destroy();
+
+    // Let the upstream response (and, pre-fix, the synchronous throw) land.
+    await new Promise((r) => setTimeout(r, 200));
+
+    // The proxy must still be alive and serving.
+    const res = await httpRequestAsync(
+      proxyPort,
+      { messages: [{ role: 'user', content: 'hi' }] },
+      { 'x-zps-provider': 'tencent' },
+    );
+    expect(res.status).toBe(200);
+
+    await running.close();
+    await slowSse.close();
+  });
 });
 
 describe('single-upstream routing (no client hints required)', () => {

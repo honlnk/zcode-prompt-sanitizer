@@ -165,7 +165,16 @@ export function createProxyServer(deps: ProxyDeps): Server {
                 (info.responseFixedFields ?? 0) + fix.fields;
             });
             // pipeline destroys all streams on premature close of any of them.
-            pipeline(upstreamRes, stripper, clientRes, () => {});
+            // But if the client disconnected before the upstream response
+            // arrived, clientRes is already destroyed and pipeline() throws
+            // synchronously (ERR_STREAM_UNABLE_TO_PIPE) — an uncaught throw
+            // here killed the whole daemon in the wild. Drop the orphaned
+            // response instead.
+            try {
+              pipeline(upstreamRes, stripper, clientRes, () => {});
+            } catch {
+              upstreamRes.destroy();
+            }
           } else {
             // Stream verbatim — SSE chunks pass through unbuffered.
             upstreamRes.pipe(clientRes);
