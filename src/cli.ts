@@ -175,6 +175,17 @@ async function main(): Promise<void> {
   // anything (like the startup banner) gets logged.
   if (isDaemonChild()) setupDaemonLogging();
 
+  // Last-resort safety net: a bug in one request's stream plumbing must never
+  // kill the whole proxy (an uncaught ERR_STREAM_UNABLE_TO_PIPE took the
+  // daemon down repeatedly in the wild). The proxy is stateless between
+  // requests, so log and keep serving rather than exit.
+  process.on('uncaughtException', (err) => {
+    console.error('Uncaught exception (proxy keeps running):', err);
+  });
+  process.on('unhandledRejection', (reason) => {
+    console.error('Unhandled rejection (proxy keeps running):', reason);
+  });
+
   const server = startServer(config, { configPath });
 
   // Detached daemon child: report readiness (or failure) to the parent over
