@@ -215,6 +215,9 @@ into a retryable-looking 503 — the client backs off for minutes retrying a
 request that can never succeed. When enabled, verbose logs annotate affected
 requests with `[req-fix: -N +M]` (messages dropped / filled).
 
+A concrete before/after request example lives in
+[examples/empty-content-fix.example.md](examples/empty-content-fix.example.md).
+
 ### Response fixes
 
 Response-side normalizations, toggleable live from the dashboard
