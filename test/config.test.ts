@@ -38,9 +38,9 @@ describe('validateRules', () => {
   });
 
   it('rejects invalid scopes', () => {
-    expect(() =>
-      validateRules([{ id: 'x', match: 'a', scopes: ['developer'] }]),
-    ).toThrow(/invalid scope/);
+    expect(() => validateRules([{ id: 'x', match: 'a', scopes: ['developer'] }])).toThrow(
+      /invalid scope/,
+    );
   });
 });
 
@@ -51,6 +51,8 @@ describe('loadConfig', () => {
     expect(cfg.host).toBe('127.0.0.1');
     expect(cfg.rules).toHaveLength(BUILTIN_RULES.length);
     expect(cfg.responseFixes.stripEmptyDeltaFields).toBe(false);
+    expect(cfg.responseFixes.failFastDeterministicErrors).toBe(true);
+    expect(cfg.requestFixes.fixEmptyContentMessages).toBe(true);
   });
 
   it('loads responseFixes.stripEmptyDeltaFields from the config file', () => {
@@ -68,6 +70,34 @@ describe('loadConfig', () => {
     writeFileSync(file, 'responseFixes:\n  stripEmptyDeltaFields: "yes"\n', 'utf8');
     const cfg = loadConfig(file);
     expect(cfg.responseFixes.stripEmptyDeltaFields).toBe(false);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('loads requestFixes and failFastDeterministicErrors from the config file', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'zps-'));
+    const file = join(dir, 'config.yaml');
+    writeFileSync(
+      file,
+      'requestFixes:\n  fixEmptyContentMessages: false\n' +
+        'responseFixes:\n  failFastDeterministicErrors: false\n',
+      'utf8',
+    );
+    const cfg = loadConfig(file);
+    expect(cfg.requestFixes.fixEmptyContentMessages).toBe(false);
+    expect(cfg.responseFixes.failFastDeterministicErrors).toBe(false);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('keeps default-on request fixes when the config file predates them', () => {
+    // Migration guarantee: configs written before v0.4.0 have no
+    // requestFixes key — merging onto defaults keeps the fix enabled.
+    const dir = mkdtempSync(join(tmpdir(), 'zps-'));
+    const file = join(dir, 'config.yaml');
+    writeFileSync(file, 'port: 18791\nresponseFixes:\n  stripEmptyDeltaFields: true\n', 'utf8');
+    const cfg = loadConfig(file);
+    expect(cfg.requestFixes.fixEmptyContentMessages).toBe(true);
+    expect(cfg.responseFixes.failFastDeterministicErrors).toBe(true);
+    expect(cfg.responseFixes.stripEmptyDeltaFields).toBe(true);
     rmSync(dir, { recursive: true, force: true });
   });
 

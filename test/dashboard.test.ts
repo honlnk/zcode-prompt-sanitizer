@@ -149,6 +149,22 @@ describe('dashboard API', () => {
     const res = await apiCall('GET', '/settings');
     expect(res.status).toBe(200);
     expect(res.body.responseFixes.stripEmptyDeltaFields).toBe(false);
+    expect(res.body.responseFixes.failFastDeterministicErrors).toBe(true);
+    expect(res.body.requestFixes.fixEmptyContentMessages).toBe(true);
+  });
+
+  it('POST /settings flips the request-fix toggle too', async () => {
+    const off = await apiCall('POST', '/settings', {
+      requestFixes: { fixEmptyContentMessages: false },
+      responseFixes: { failFastDeterministicErrors: false },
+    });
+    expect(off.status).toBe(200);
+    expect(off.body.requestFixes.fixEmptyContentMessages).toBe(false);
+    expect(off.body.responseFixes.failFastDeterministicErrors).toBe(false);
+
+    const back = await apiCall('GET', '/settings');
+    expect(back.body.requestFixes.fixEmptyContentMessages).toBe(false);
+    expect(back.body.responseFixes.failFastDeterministicErrors).toBe(false);
   });
 
   it('POST /settings flips the toggle, persists it, and it survives a reload', async () => {
@@ -175,9 +191,7 @@ describe('dashboard API', () => {
     await waitForListening(running.proxy);
     const port = (running.proxy.address() as any).port;
 
-    const payload = Buffer.from(
-      JSON.stringify({ responseFixes: { stripEmptyDeltaFields: true } }),
-    );
+    const payload = Buffer.from(JSON.stringify({ responseFixes: { stripEmptyDeltaFields: true } }));
     await new Promise<void>((resolve, reject) => {
       const req = request(
         {

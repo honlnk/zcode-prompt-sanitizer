@@ -43,8 +43,12 @@ export function createDefaultConfig(): SanitizerConfig {
     upstreams: {},
     maxBodyBytes: 8 * 1024 * 1024,
     verbose: false,
+    requestFixes: {
+      fixEmptyContentMessages: true,
+    },
     responseFixes: {
       stripEmptyDeltaFields: false,
+      failFastDeterministicErrors: true,
     },
   };
 }

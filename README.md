@@ -136,7 +136,16 @@ dashboard:
   enabled: true
   port: 0                  # 0 = serve on the proxy port under /__zps__
 
-# Response-side normalizations (all default OFF; toggle in the dashboard too).
+# Request-side normalizations (default ON; toggle in the dashboard too).
+requestFixes:
+  # Drop/fill messages whose content is empty before forwarding. Strict
+  # upstreams (Tencent WorkBuddy, error 11151 "a message has empty content")
+  # reject the ENTIRE request over them. Tool-call-only assistant turns and
+  # empty tool messages get a " " placeholder (dropping them would orphan
+  # tool results); truly blank assistant/system/user messages are removed.
+  fixEmptyContentMessages: true
+
+# Response-side normalizations (toggle in the dashboard too).
 responseFixes:
   # Strip empty placeholder fields from SSE chat chunks: content:"",
   # reasoning_content:"", tool_calls:[], empty function_call, and
@@ -145,6 +154,12 @@ responseFixes:
   # active reasoning block on every chunk, splitting one thinking phase into
   # dozens of "思考" segments. Enable if you see that.
   stripEmptyDeltaFields: false
+  # Rewrite deterministic upstream errors to a non-retryable 400: when a
+  # >=500 JSON error body matches a known deterministic signature (currently
+  # 11151 / "empty content"), respond 400 instead so clients fail fast
+  # instead of retrying the same doomed request for minutes. The original
+  # status is preserved in the x-zps-rewritten-status header. Default ON.
+  failFastDeterministicErrors: true
 
 upstreams:
   workbuddy:
@@ -180,24 +195,55 @@ rules:
 
 Rules apply **in order**; replacements can chain (rule A's output is visible to rule B in the same pass). **All** occurrences of a match are replaced.
 
-### Response fixes
+### Request fixes
 
-Response-side normalizations, each off by default and toggleable live from the
-dashboard (**Response Fixes** section) — changes apply immediately and are
+Request-side normalizations, on by default and toggleable live from the
+dashboard (**Request Fixes** section) — changes apply immediately and are
 persisted to the config file.
 
 | Flag                             | What it does |
 | -------------------------------- | ------------ |
-| `responseFixes.stripEmptyDeltaFields` | For `text/event-stream` responses, remove empty placeholder fields from chat-chunk events: `content: ""`, `reasoning_content: ""`, `tool_calls: []`, the empty `function_call: {name:"", arguments:""}` placeholder, and `finish_reason: ""`. Events that don't parse as chat chunks (`[DONE]`, comments, other shapes) pass through byte-identical. |
+| `requestFixes.fixEmptyContentMessages` | Before forwarding, drop/fill messages whose `content` is empty (`null`, `""`, `[]`, or an all-empty-text parts array). Messages with `tool_calls`/`function_call` and empty `tool`-role messages get a `" "` placeholder (dropping them would orphan the tool results that follow); truly blank `assistant`/`system`/`user` messages are removed entirely. Whitespace-only content is left alone. |
 
-Why it exists: Tencent hunyuan (copilot.tencent.com) decorates every chunk
-with placeholders — including `tool_calls: []`. Clients on older Vercel AI SDK
-builds (ZCode) run their tool-call branch on `delta.tool_calls != null`, which
-an empty array satisfies: the active reasoning block is closed on every chunk
-and one thinking phase renders as a long stack of tiny "思考/thinking"
-segments. With this fix on, the stream arrives clean and the client merges the
-reasoning into a single block. When enabled, verbose logs annotate affected
-requests with `[sse-fix: N]` (N = fields stripped).
+Why it exists: lenient endpoints (GLM) happily accept messages with empty
+content, so agent clients accumulate them in replayed history — tool-call-only
+assistant turns, blank progress placeholders, and the empty assistant
+messages left behind by failed turns. Strict upstreams (Tencent WorkBuddy via
+copilot.tencent.com) reject the **entire** request over a single one (error
+`11151: "a message has empty content"`), which account-pool gateways then wrap
+into a retryable-looking 503 — the client backs off for minutes retrying a
+request that can never succeed. When enabled, verbose logs annotate affected
+requests with `[req-fix: -N +M]` (messages dropped / filled).
+
+### Response fixes
+
+Response-side normalizations, toggleable live from the dashboard
+(**Response Fixes** section) — changes apply immediately and are persisted to
+the config file.
+
+| Flag                             | What it does |
+| -------------------------------- | ------------ |
+| `responseFixes.stripEmptyDeltaFields` | For `text/event-stream` responses, remove empty placeholder fields from chat-chunk events: `content: ""`, `reasoning_content: ""`, `tool_calls: []`, the empty `function_call: {name:"", arguments:""}` placeholder, and `finish_reason: ""`. Events that don't parse as chat chunks (`[DONE]`, comments, other shapes) pass through byte-identical. Default off. |
+| `responseFixes.failFastDeterministicErrors` | When a `>=500` JSON error body (≤64 KB) matches a known deterministic signature — currently Tencent's `11151` / `empty content` rejection — rewrite the response to a non-retryable `400` with the body intact and an `x-zps-rewritten-status` header carrying the original status. Genuinely transient errors (no healthy account, queue full, rate limit) never match and keep their original status. Default on. |
+
+Why `stripEmptyDeltaFields` exists: Tencent hunyuan (copilot.tencent.com)
+decorates every chunk with placeholders — including `tool_calls: []`. Clients
+on older Vercel AI SDK builds (ZCode) run their tool-call branch on
+`delta.tool_calls != null`, which an empty array satisfies: the active
+reasoning block is closed on every chunk and one thinking phase renders as a
+long stack of tiny "思考/thinking" segments. With this fix on, the stream
+arrives clean and the client merges the reasoning into a single block. When
+enabled, verbose logs annotate affected requests with `[sse-fix: N]`
+(N = fields stripped).
+
+Why `failFastDeterministicErrors` exists: an account-pool gateway in front of
+a strict upstream routinely wraps its deterministic 400s into 503 "try again
+later" responses. Clients (ZCode included) treat 503 as retryable and back
+off for minutes on a request that will fail identically every time, burning
+the whole account pool in the process. Rewriting matched errors to 400 makes
+the failure surface in seconds, with the real upstream reason still in the
+body. When a rewrite happens, verbose logs annotate the request with
+`[rewritten: 503→400]`.
 
 
 ### CLI flags & env vars
