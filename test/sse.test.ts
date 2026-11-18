@@ -164,9 +164,7 @@ describe('createEmptyDeltaStripper (stream)', () => {
       let out = '';
       t.on('data', (d) => (out += d.toString()));
       t.on('end', () => {
-        const parsed = JSON.parse(
-          out.split('\n\n')[0]!.replace(/^data: /, ''),
-        );
+        const parsed = JSON.parse(out.split('\n\n')[0]!.replace(/^data: /, ''));
         expect(parsed.choices[0].delta.reasoning_content).toBe('你好');
         expect(parsed.choices[0].delta.content).toBeUndefined();
         expect(out).toContain('[DONE]');

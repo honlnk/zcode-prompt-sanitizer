@@ -153,9 +153,7 @@ async function main(): Promise<void> {
   // Foreground parent of daemon mode: spawn the detached child, relay its
   // startup banner, then exit. The marker env var prevents re-daemonizing.
   if (args.daemon && !isDaemonChild()) {
-    const passthrough = process.argv
-      .slice(2)
-      .filter((a) => a !== '--daemon' && a !== '-d');
+    const passthrough = process.argv.slice(2).filter((a) => a !== '--daemon' && a !== '-d');
     process.exit(await runDaemonParent(process.argv[1]!, passthrough));
   }
 

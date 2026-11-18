@@ -91,11 +91,7 @@ export class Sanitizer {
             (part as { type?: unknown }).type === 'text' &&
             typeof (part as { text?: unknown }).text === 'string'
           ) {
-            const res = this.applyRulesToString(
-              (part as { text: string }).text,
-              role,
-              activeRules,
-            );
+            const res = this.applyRulesToString((part as { text: string }).text, role, activeRules);
             if (res.changed) {
               partChanged = true;
               for (const id of res.fired) {

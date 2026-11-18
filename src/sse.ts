@@ -86,10 +86,7 @@ export function stripEmptyDeltaFieldsFromChunk(chunk: unknown): number {
  * Process one complete SSE event (including its terminating blank line).
  * Returns the event unchanged when no fix applies.
  */
-export function processSseEvent(
-  raw: string,
-  onFix?: (info: SseFixInfo) => void,
-): string {
+export function processSseEvent(raw: string, onFix?: (info: SseFixInfo) => void): string {
   const lines = raw.split(/\r?\n/);
   // Drop the trailing empty line(s) produced by the blank-line terminator.
   while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
