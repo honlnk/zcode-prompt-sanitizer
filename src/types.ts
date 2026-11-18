@@ -63,8 +63,22 @@ export interface SanitizerConfig {
   maxBodyBytes: number;
   /** Enable verbose request logging to stdout. */
   verbose: boolean;
+  /** Request-side normalizations, each independently toggleable. */
+  requestFixes: RequestFixesConfig;
   /** Response-side normalizations, each independently toggleable. */
   responseFixes: ResponseFixesConfig;
+}
+
+export interface RequestFixesConfig {
+  /**
+   * Drop / fill messages whose `content` is empty (null, "" or an all-empty
+   * content-part array) before the body is forwarded upstream. Strict
+   * upstreams (Tencent WorkBuddy, error 11151 "a message has empty content")
+   * reject the ENTIRE request over them; lenient ones (GLM) tolerate them,
+   * so replayed agent histories accumulate both shapes: tool-call-only
+   * assistant turns and blank progress placeholders.
+   */
+  fixEmptyContentMessages: boolean;
 }
 
 export interface ResponseFixesConfig {
@@ -79,6 +93,16 @@ export interface ResponseFixesConfig {
    * thinking phase into dozens of "thinking" UI segments.
    */
   stripEmptyDeltaFields: boolean;
+  /**
+   * Rewrite deterministic upstream errors to their non-retryable truth.
+   * When a >=500 JSON error body matches a known deterministic signature
+   * (currently 11151 / "empty content"), respond 400 instead so clients
+   * fail fast with the real reason instead of retrying the same doomed
+   * request for minutes. The original status is preserved in the
+   * `x-zps-rewritten-status` response header. Genuinely transient errors
+   * (no_healthy_account, upstream_busy, rate limits) never match.
+   */
+  failFastDeterministicErrors: boolean;
 }
 
 export interface DashboardConfig {

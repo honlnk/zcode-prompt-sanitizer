@@ -76,7 +76,11 @@ function httpRequestAsync(
   port: number,
   body: any,
   headers: Record<string, string> = {},
-): Promise<{ status: number; body: string; headers: Record<string, string | string[] | undefined> }> {
+): Promise<{
+  status: number;
+  body: string;
+  headers: Record<string, string | string[] | undefined>;
+}> {
   return new Promise((resolve, reject) => {
     const payload = Buffer.from(JSON.stringify(body));
     const req = request(
@@ -85,7 +89,11 @@ function httpRequestAsync(
         port,
         method: 'POST',
         path: '/v1/chat/completions',
-        headers: { 'content-type': 'application/json', 'content-length': payload.length, ...headers },
+        headers: {
+          'content-type': 'application/json',
+          'content-length': payload.length,
+          ...headers,
+        },
       },
       (res) => {
         const chunks: Buffer[] = [];
@@ -147,15 +155,19 @@ describe('proxy end-to-end', () => {
     await waitForListening(running.proxy);
     const proxyPort = (running.proxy.address() as any).port;
 
-    const res = await httpRequestAsync(proxyPort, {
-      messages: [
-        {
-          role: 'system',
-          content: 'Main branch (you will usually use this for PRs): master',
-        },
-        { role: 'user', content: '你好' },
-      ],
-    }, { 'x-zps-provider': 'test' });
+    const res = await httpRequestAsync(
+      proxyPort,
+      {
+        messages: [
+          {
+            role: 'system',
+            content: 'Main branch (you will usually use this for PRs): master',
+          },
+          { role: 'user', content: '你好' },
+        ],
+      },
+      { 'x-zps-provider': 'test' },
+    );
 
     expect(res.status).toBe(200);
     // Upstream should have received the REWRITTEN content.
@@ -187,13 +199,13 @@ describe('proxy end-to-end', () => {
 
     await httpRequestAsync(
       proxyPort,
-      { messages: [{ role: 'user', content: 'Main branch (you will usually use this for PRs): x' }] },
+      {
+        messages: [{ role: 'user', content: 'Main branch (you will usually use this for PRs): x' }],
+      },
       { 'x-zps-provider': 'test' },
     );
 
-    expect(received.messages[0].content).toBe(
-      'Main branch (you will usually use this for PRs): x',
-    );
+    expect(received.messages[0].content).toBe('Main branch (you will usually use this for PRs): x');
     await running.close();
   });
 
@@ -306,7 +318,9 @@ describe('proxy without configured upstream (Host-header passthrough)', () => {
         (r) => {
           const chunks: Buffer[] = [];
           r.on('data', (c) => chunks.push(c));
-          r.on('end', () => resolve({ status: r.statusCode ?? 0, body: Buffer.concat(chunks).toString('utf8') }));
+          r.on('end', () =>
+            resolve({ status: r.statusCode ?? 0, body: Buffer.concat(chunks).toString('utf8') }),
+          );
         },
       );
       req.on('error', reject);
@@ -427,23 +441,21 @@ describe('response fix: stripEmptyDeltaFields', () => {
   it('survives a client abort racing the upstream SSE response', async () => {
     // Upstream that waits 100ms before sending SSE headers, so the client
     // abort lands while the response is still in flight.
-    const slowSse = await new Promise<{ port: number; close: () => Promise<void> }>(
-      (resolve) => {
-        const server = createServer((_req, res) => {
-          setTimeout(() => {
-            res.writeHead(200, { 'content-type': 'text/event-stream' });
-            res.write('data: {"choices":[]}\n\n');
-            res.end();
-          }, 100);
+    const slowSse = await new Promise<{ port: number; close: () => Promise<void> }>((resolve) => {
+      const server = createServer((_req, res) => {
+        setTimeout(() => {
+          res.writeHead(200, { 'content-type': 'text/event-stream' });
+          res.write('data: {"choices":[]}\n\n');
+          res.end();
+        }, 100);
+      });
+      server.listen(0, '127.0.0.1', () => {
+        resolve({
+          port: (server.address() as any).port,
+          close: () => new Promise((r) => server.close(() => r())),
         });
-        server.listen(0, '127.0.0.1', () => {
-          resolve({
-            port: (server.address() as any).port,
-            close: () => new Promise((r) => server.close(() => r())),
-          });
-        });
-      },
-    );
+      });
+    });
 
     const config: SanitizerConfig = {
       ...createDefaultConfig(),
@@ -486,6 +498,201 @@ describe('response fix: stripEmptyDeltaFields', () => {
 
     await running.close();
     await slowSse.close();
+  });
+});
+
+describe('request fix: fixEmptyContentMessages', () => {
+  // The wild poisoning scenario: GLM-era history replayed to a strict
+  // upstream (Tencent WorkBuddy 11151). The proxy must clean it before it
+  // leaves the machine.
+  const poisonedBody = {
+    model: 'kimi-k3.1-pro',
+    messages: [
+      { role: 'system', content: 'You are ZCode.' },
+      { role: 'user', content: 'run tests' },
+      {
+        role: 'assistant',
+        content: null,
+        tool_calls: [{ id: 'a', type: 'function', function: { name: 'bash', arguments: '{}' } }],
+      },
+      { role: 'tool', tool_call_id: 'a', content: 'all green' },
+      { role: 'assistant', content: '' }, // failed-turn placeholder
+      { role: 'user', content: 'continue' },
+    ],
+  };
+
+  async function runWithRequestFix(enabled: boolean) {
+    let received: any = null;
+    await upstreamClose();
+    const up = await startEchoUpstream((body) => {
+      received = body;
+    });
+    upstreamPort = up.port;
+    upstreamClose = up.close;
+
+    const config: SanitizerConfig = {
+      ...createDefaultConfig(),
+      port: 0,
+      dashboard: { enabled: false, port: 0 },
+      upstreams: { test: { target: `http://127.0.0.1:${up.port}` } },
+      rules: [],
+      requestFixes: { fixEmptyContentMessages: enabled },
+    };
+    const running = startServer(config, { configPath: null, quiet: true });
+    await waitForListening(running.proxy);
+    const proxyPort = (running.proxy.address() as any).port;
+    const res = await httpRequestAsync(proxyPort, poisonedBody, {
+      'x-zps-provider': 'test',
+    });
+    await running.close();
+    return { res, received };
+  }
+
+  it('cleans a poisoned history before it reaches the upstream', async () => {
+    const { res, received } = await runWithRequestFix(true);
+    expect(res.status).toBe(200);
+    expect(received.model).toBe('kimi-k3.1-pro'); // other fields untouched
+    const msgs = received.messages;
+    expect(msgs).toHaveLength(5);
+    // Tool-call-only assistant turn kept but filled with " ".
+    expect(msgs[2].role).toBe('assistant');
+    expect(msgs[2].content).toBe(' ');
+    expect(msgs[2].tool_calls).toHaveLength(1);
+    // Blank failed-turn placeholder gone.
+    expect(msgs.map((m: any) => m.role)).toEqual(['system', 'user', 'assistant', 'tool', 'user']);
+  });
+
+  it('forwards the poisoned history verbatim when the toggle is off', async () => {
+    const { received } = await runWithRequestFix(false);
+    expect(received.messages).toHaveLength(6);
+    expect(received.messages[2].content).toBeNull();
+    expect(received.messages[4].content).toBe('');
+  });
+});
+
+describe('response fix: failFastDeterministicErrors', () => {
+  /** Fake upstream answering with a workbuddy2api-style wrapped error. */
+  function startErrorUpstream(
+    status: number,
+    body: string,
+    opts: { delayWrites?: boolean } = {},
+  ): Promise<{ server: Server; port: number; close: () => Promise<void> }> {
+    return new Promise((resolve) => {
+      const server = createServer((_req, res) => {
+        res.writeHead(status, { 'content-type': 'application/json' });
+        if (opts.delayWrites && body.length > 1) {
+          // Split the body across writes to exercise cross-chunk buffering.
+          const mid = Math.floor(body.length / 2);
+          res.write(body.slice(0, mid));
+          setTimeout(() => res.end(body.slice(mid)), 15);
+          return;
+        }
+        res.end(body);
+      });
+      server.listen(0, '127.0.0.1', () => {
+        const port = (server.address() as any).port;
+        resolve({
+          server,
+          port,
+          close: () => new Promise((r) => server.close(() => r())),
+        });
+      });
+    });
+  }
+
+  const wb2apiStyleError = JSON.stringify({
+    error: {
+      message: 'a message has empty content, please check the conversation history and retry',
+      type: 'api_error',
+      code: 'no_healthy_account',
+      gateway_hint: 'deterministic upstream error (code 11151)',
+    },
+  });
+
+  async function runAgainst(up: { port: number; close: () => Promise<void> }, enabled: boolean) {
+    const config: SanitizerConfig = {
+      ...createDefaultConfig(),
+      port: 0,
+      dashboard: { enabled: false, port: 0 },
+      upstreams: { test: { target: `http://127.0.0.1:${up.port}` } },
+      rules: [],
+      responseFixes: { stripEmptyDeltaFields: false, failFastDeterministicErrors: enabled },
+    };
+    const running = startServer(config, { configPath: null, quiet: true });
+    await waitForListening(running.proxy);
+    const proxyPort = (running.proxy.address() as any).port;
+    const res = await httpRequestAsync(
+      proxyPort,
+      { messages: [{ role: 'user', content: 'hi' }] },
+      { 'x-zps-provider': 'test' },
+    );
+    await running.close();
+    await up.close();
+    return res;
+  }
+
+  it('rewrites a 503 wrapping 11151 into a non-retryable 400', async () => {
+    const up = await startErrorUpstream(503, wb2apiStyleError);
+    const res = await runAgainst(up, true);
+    expect(res.status).toBe(400);
+    expect(res.headers['x-zps-rewritten-status']).toBe('503');
+    // Body forwarded intact so the client sees the real upstream reason.
+    const parsed = JSON.parse(res.body);
+    expect(parsed.error.message).toContain('a message has empty content');
+  });
+
+  it('buffers correctly when the error body arrives across multiple chunks', async () => {
+    const up = await startErrorUpstream(502, wb2apiStyleError, { delayWrites: true });
+    const res = await runAgainst(up, true);
+    expect(res.status).toBe(400);
+    expect(res.headers['x-zps-rewritten-status']).toBe('502');
+    expect(JSON.parse(res.body).error.code).toBe('no_healthy_account');
+  });
+
+  it('passes genuinely transient 5xx errors through verbatim', async () => {
+    const transient = JSON.stringify({
+      error: {
+        message: 'upstream capacity is full (queue.full); retry after a short wait',
+        type: 'api_error',
+        code: 'upstream_busy',
+      },
+    });
+    const up = await startErrorUpstream(503, transient);
+    const res = await runAgainst(up, true);
+    expect(res.status).toBe(503);
+    expect(res.headers['x-zps-rewritten-status']).toBeUndefined();
+    expect(res.body).toBe(transient);
+  });
+
+  it('passes 5xx through when the toggle is off', async () => {
+    const up = await startErrorUpstream(503, wb2apiStyleError);
+    const res = await runAgainst(up, false);
+    expect(res.status).toBe(503);
+    expect(res.headers['x-zps-rewritten-status']).toBeUndefined();
+  });
+
+  it('streams oversized 5xx JSON bodies verbatim without sniffing to a rewrite', async () => {
+    // > 64KB: too large to treat as an error payload — must pass through.
+    const padding = 'x'.repeat(70 * 1024);
+    const oversized = JSON.stringify({
+      error: { message: `empty content ${padding}`, type: 'api_error' },
+    });
+    const up = await startErrorUpstream(503, oversized);
+    const res = await runAgainst(up, true);
+    expect(res.status).toBe(503);
+    expect(res.headers['x-zps-rewritten-status']).toBeUndefined();
+    expect(res.body.length).toBe(oversized.length);
+  });
+
+  it('never touches 2xx JSON responses', async () => {
+    const up = await startErrorUpstream(
+      200,
+      JSON.stringify({ ok: true, note: 'empty content in a success body' }),
+    );
+    const res = await runAgainst(up, true);
+    expect(res.status).toBe(200);
+    expect(res.headers['x-zps-rewritten-status']).toBeUndefined();
+    expect(JSON.parse(res.body).ok).toBe(true);
   });
 });
 

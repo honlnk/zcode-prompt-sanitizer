@@ -71,10 +71,7 @@ export function loadConfig(path?: string): SanitizerConfig {
     const text = readFileSync(resolved, 'utf8');
     raw = resolved.endsWith('.json') ? JSON.parse(text) : yaml.load(text);
   } catch (e) {
-    throw new ConfigError(
-      `Failed to parse config file: ${(e as Error).message}`,
-      resolved,
-    );
+    throw new ConfigError(`Failed to parse config file: ${(e as Error).message}`, resolved);
   }
 
   return mergeConfig(base, raw, resolved);
@@ -105,17 +102,13 @@ export function validateRules(rules: unknown, source?: string): RewriteRule[] {
     if (match.length === 0) {
       throw new ConfigError(`rules[${i}].match must be a non-empty string`, source);
     }
-    const replacement =
-      typeof r.replacement === 'string' ? r.replacement : '';
+    const replacement = typeof r.replacement === 'string' ? r.replacement : '';
     const enabled = r.enabled === undefined ? true : Boolean(r.enabled);
     const scopesRaw = Array.isArray(r.scopes) ? r.scopes : ['system'];
     const scopes: RewriteScope[] = [];
     for (const s of scopesRaw) {
       if (typeof s !== 'string' || !VALID_SCOPES.has(s as RewriteScope)) {
-        throw new ConfigError(
-          `rules[${i}].scopes contains invalid scope "${String(s)}"`,
-          source,
-        );
+        throw new ConfigError(`rules[${i}].scopes contains invalid scope "${String(s)}"`, source);
       }
       scopes.push(s as RewriteScope);
     }
@@ -133,19 +126,12 @@ export function validateRules(rules: unknown, source?: string): RewriteRule[] {
 
 function stringifyField(v: unknown, field: string, i: number, source?: string): string {
   if (typeof v !== 'string' || v.length === 0) {
-    throw new ConfigError(
-      `rules[${i}].${field} must be a non-empty string`,
-      source,
-    );
+    throw new ConfigError(`rules[${i}].${field} must be a non-empty string`, source);
   }
   return v;
 }
 
-function mergeConfig(
-  base: SanitizerConfig,
-  raw: unknown,
-  source: string,
-): SanitizerConfig {
+function mergeConfig(base: SanitizerConfig, raw: unknown, source: string): SanitizerConfig {
   const out = structuredClone(base);
   // An empty document (e.g. a `touch`ed placeholder config file) means
   // "use defaults" rather than a parse failure.
@@ -193,10 +179,20 @@ function mergeConfig(
     out.upstreams = ups as SanitizerConfig['upstreams'];
   }
 
+  if (obj.requestFixes && typeof obj.requestFixes === 'object') {
+    const rf = obj.requestFixes as Record<string, unknown>;
+    if (typeof rf.fixEmptyContentMessages === 'boolean') {
+      out.requestFixes.fixEmptyContentMessages = rf.fixEmptyContentMessages;
+    }
+  }
+
   if (obj.responseFixes && typeof obj.responseFixes === 'object') {
     const rf = obj.responseFixes as Record<string, unknown>;
     if (typeof rf.stripEmptyDeltaFields === 'boolean') {
       out.responseFixes.stripEmptyDeltaFields = rf.stripEmptyDeltaFields;
+    }
+    if (typeof rf.failFastDeterministicErrors === 'boolean') {
+      out.responseFixes.failFastDeterministicErrors = rf.failFastDeterministicErrors;
     }
   }
 

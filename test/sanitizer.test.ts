@@ -147,7 +147,8 @@ describe('Sanitizer', () => {
       messages: [
         {
           role: 'system',
-          content: 'You are in a git repo. Main branch (you will usually use this for PRs): master\n',
+          content:
+            'You are in a git repo. Main branch (you will usually use this for PRs): master\n',
         },
         { role: 'user', content: '你好' },
       ],

@@ -1,12 +1,13 @@
 import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
-import type { IncomingMessage, Server, ServerOptions } from 'node:http';
+import type { IncomingMessage, Server, ServerOptions, ServerResponse } from 'node:http';
 import { createServer } from 'node:http';
 import { pipeline } from 'node:stream';
 import { Buffer } from 'node:buffer';
 import type { SanitizerConfig, Upstream } from './types.js';
 import { Sanitizer } from './sanitizer.js';
 import { createEmptyDeltaStripper } from './sse.js';
+import { fixEmptyContentMessages } from './request-fixes.js';
 
 /** Hop-by-hop headers that must NOT be forwarded between client and upstream. */
 const HOP_BY_HOP = new Set([
@@ -39,6 +40,12 @@ export interface RequestInfo {
   streamed: boolean;
   /** Empty delta-placeholder fields stripped from an SSE response (0/undefined = none). */
   responseFixedFields?: number;
+  /** Empty-content messages dropped from the request (0/undefined = none). */
+  requestDropped?: number;
+  /** Empty-content messages filled with a placeholder (0/undefined = none). */
+  requestFilled?: number;
+  /** Original upstream status when a deterministic error was rewritten to 400. */
+  rewrittenStatus?: number;
   durationMs: number;
 }
 
@@ -73,18 +80,29 @@ export function createProxyServer(deps: ProxyDeps): Server {
       let outboundBody: Buffer | null = rawBody;
       let contentType = getHeader(clientReq.headers, 'content-type') ?? '';
 
-      if (
-        rawBody &&
-        rawBody.length > 0 &&
-        contentType.toLowerCase().includes('application/json')
-      ) {
+      if (rawBody && rawBody.length > 0 && contentType.toLowerCase().includes('application/json')) {
         try {
           const parsed = JSON.parse(rawBody.toString('utf8'));
+          let mutated = false;
+          // Request-side fix first: drop/fill empty-content messages that
+          // strict upstreams (Tencent WorkBuddy, error 11151) reject the
+          // whole request over. Missing config key behaves as enabled.
+          if (config.requestFixes?.fixEmptyContentMessages !== false) {
+            const fix = fixEmptyContentMessages(parsed);
+            if (fix.changed) {
+              mutated = true;
+              info.requestDropped = fix.dropped;
+              info.requestFilled = fix.filled;
+            }
+          }
           const result = sanitizer.rewrite(parsed);
           if (result.changed) {
-            outboundBody = Buffer.from(JSON.stringify(parsed), 'utf8');
+            mutated = true;
             info.changed = true;
             info.firedRuleIds = result.firedRuleIds;
+          }
+          if (mutated) {
+            outboundBody = Buffer.from(JSON.stringify(parsed), 'utf8');
           }
         } catch {
           // Not valid JSON despite content-type — forward as-is.
@@ -135,9 +153,7 @@ export function createProxyServer(deps: ProxyDeps): Server {
           // HEAD/204/304 have no body.
           if (
             info.statusCode !== undefined &&
-            (info.statusCode === 204 ||
-              info.statusCode === 304 ||
-              clientReq.method === 'HEAD')
+            (info.statusCode === 204 || info.statusCode === 304 || clientReq.method === 'HEAD')
           ) {
             clientRes.writeHead(info.statusCode, respHeaders);
             clientRes.end();
@@ -147,13 +163,32 @@ export function createProxyServer(deps: ProxyDeps): Server {
             return;
           }
 
+          // Optional response-side fix: rewrite deterministic upstream errors
+          // (e.g. Tencent 11151 empty-content, wrapped in a 503 by account
+          // pools) to a non-retryable 400 so clients fail fast instead of
+          // backing off for minutes on a doomed request. Buffers error-sized
+          // JSON bodies; everything else takes the streaming paths below.
+          const respContentType = upstreamRes.headers['content-type'];
+          const respIsJson =
+            typeof respContentType === 'string' &&
+            respContentType.toLowerCase().includes('application/json');
+          const declaredLength = Number(upstreamRes.headers['content-length']);
+          if (
+            config.responseFixes?.failFastDeterministicErrors === true &&
+            (info.statusCode ?? 200) >= 500 &&
+            respIsJson &&
+            !(declaredLength > ERROR_SNIFF_LIMIT_BYTES)
+          ) {
+            forwardWithDeterministicSniff(upstreamRes, clientRes, respHeaders, info, started, deps);
+            return;
+          }
+
           clientRes.writeHead(info.statusCode ?? 200, respHeaders);
           info.streamed = true;
 
           // Optional response-side fix: normalize SSE chat chunks. Only kicks
           // in when the toggle is on AND the upstream speaks SSE; the stream
           // itself decides per event whether anything needs changing.
-          const respContentType = upstreamRes.headers['content-type'];
           const fixSse =
             config.responseFixes?.stripEmptyDeltaFields === true &&
             typeof respContentType === 'string' &&
@@ -161,8 +196,7 @@ export function createProxyServer(deps: ProxyDeps): Server {
 
           if (fixSse) {
             const stripper = createEmptyDeltaStripper((fix) => {
-              info.responseFixedFields =
-                (info.responseFixedFields ?? 0) + fix.fields;
+              info.responseFixedFields = (info.responseFixedFields ?? 0) + fix.fields;
             });
             // pipeline destroys all streams on premature close of any of them.
             // But if the client disconnected before the upstream response
@@ -282,10 +316,7 @@ function findUpstreamKey(map: SanitizerConfig['upstreams'], needle: string): str
   return null;
 }
 
-function getHeader(
-  headers: IncomingMessage['headers'],
-  name: string,
-): string | undefined {
+function getHeader(headers: IncomingMessage['headers'], name: string): string | undefined {
   const v = headers[name.toLowerCase()];
   if (Array.isArray(v)) return v[0];
   return v;
@@ -319,6 +350,114 @@ function readBody(req: IncomingMessage, maxBytes: number): Promise<Buffer | null
         reject(err);
       }
     });
+  });
+}
+
+/**
+ * Known deterministic upstream error signatures: failures no amount of
+ * retrying will ever fix because the request itself is rejected. Currently
+ * only the Tencent WorkBuddy empty-content rejection (code 11151, message
+ * "a message has empty content ..."). Genuinely transient errors
+ * (no_healthy_account, upstream_busy, rate limits, timeouts) never match.
+ * Extend this list as new deterministic upstream errors are observed.
+ */
+const DETERMINISTIC_ERROR_SIGNATURES: readonly RegExp[] = [/empty content/i, /\b11151\b/];
+
+/** Error bodies larger than this are streamed verbatim without sniffing. */
+const ERROR_SNIFF_LIMIT_BYTES = 64 * 1024;
+
+/**
+ * Buffer a >=500 JSON error response (bounded by ERROR_SNIFF_LIMIT_BYTES),
+ * test it against DETERMINISTIC_ERROR_SIGNATURES, and either:
+ *  - match → respond 400 with the original body plus an
+ *    `x-zps-rewritten-status` header carrying the upstream status, or
+ *  - no match / oversized / malformed → forward verbatim with the original
+ *    status (buffered bytes first, remainder piped).
+ */
+function forwardWithDeterministicSniff(
+  upstreamRes: IncomingMessage,
+  clientRes: ServerResponse,
+  respHeaders: Record<string, string>,
+  info: RequestInfo,
+  started: number,
+  deps: ProxyDeps,
+): void {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  let gaveUp = false;
+  let settled = false;
+
+  const finish = () => {
+    if (settled) return;
+    settled = true;
+    info.durationMs = Date.now() - started;
+    deps.onRequest?.(info);
+  };
+
+  const forwardVerbatim = () => {
+    clientRes.writeHead(info.statusCode ?? 200, respHeaders);
+    info.streamed = true;
+    if (chunks.length) clientRes.write(Buffer.concat(chunks));
+    if (upstreamRes.readableEnded) {
+      clientRes.end();
+      finish();
+      return;
+    }
+    upstreamRes.pipe(clientRes);
+    upstreamRes.on('end', finish);
+  };
+
+  upstreamRes.on('data', (chunk: Buffer) => {
+    if (gaveUp) return;
+    size += chunk.length;
+    if (size > ERROR_SNIFF_LIMIT_BYTES) {
+      // Too large to be an error payload worth sniffing — give up and
+      // stream verbatim. The overflowing chunk must join the buffer too,
+      // otherwise it is silently dropped and the body arrives truncated.
+      gaveUp = true;
+      chunks.push(chunk);
+      forwardVerbatim();
+      return;
+    }
+    chunks.push(chunk);
+  });
+
+  upstreamRes.on('end', () => {
+    if (gaveUp || settled) {
+      finish();
+      return;
+    }
+    const body = Buffer.concat(chunks).toString('utf8');
+    if (DETERMINISTIC_ERROR_SIGNATURES.some((re) => re.test(body))) {
+      const original = info.statusCode ?? 503;
+      respHeaders['x-zps-rewritten-status'] = String(original);
+      info.rewrittenStatus = original;
+      info.statusCode = 400; // what the client actually receives
+      info.streamed = false;
+      clientRes.writeHead(400, respHeaders);
+      clientRes.end(body);
+    } else {
+      forwardVerbatim();
+      return;
+    }
+    finish();
+  });
+
+  upstreamRes.on('error', () => {
+    if (!clientRes.headersSent) {
+      clientRes.writeHead(502, { 'content-type': 'application/json' });
+      clientRes.end(
+        JSON.stringify({
+          error: {
+            message: 'zcode-prompt-sanitizer: upstream error while buffering error body',
+            type: 'upstream_error',
+          },
+        }),
+      );
+    } else if (!clientRes.writableEnded) {
+      clientRes.end();
+    }
+    finish();
   });
 }
 

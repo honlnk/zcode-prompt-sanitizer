@@ -26,10 +26,7 @@ export interface RunningServer {
  */
 export function formatBanner(config: SanitizerConfig): string {
   const bind = `http://${config.host}:${config.port}`;
-  const lines = [
-    `\n  🛡  zcode-prompt-sanitizer v${VERSION}`,
-    `     Proxy      →  ${bind}`,
-  ];
+  const lines = [`\n  🛡  zcode-prompt-sanitizer v${VERSION}`, `     Proxy      →  ${bind}`];
   if (config.dashboard.enabled) {
     lines.push(`     Dashboard  →  ${bind}/__zps__`);
   }
@@ -49,19 +46,21 @@ export function formatBanner(config: SanitizerConfig): string {
  * listening. The dashboard is served from the same proxy port under the
  * /__zps__ prefix unless a separate dashboard port is configured.
  */
-export function startServer(
-  config: SanitizerConfig,
-  opts: StartOptions,
-): RunningServer {
+export function startServer(config: SanitizerConfig, opts: StartOptions): RunningServer {
   const sanitizer = new Sanitizer(config.rules);
   const startedAt = Date.now();
 
   const onRequest = (info: RequestInfo) => {
     if (!config.verbose) return;
     const flag = info.changed ? `[rewrote: ${info.firedRuleIds.join(',')}]` : '[passthrough]';
+    const reqFix =
+      info.requestDropped || info.requestFilled
+        ? ` [req-fix: -${info.requestDropped ?? 0} +${info.requestFilled ?? 0}]`
+        : '';
     const fix = info.responseFixedFields ? ` [sse-fix: ${info.responseFixedFields}]` : '';
+    const rewritten = info.rewrittenStatus ? ` [rewritten: ${info.rewrittenStatus}→400]` : '';
     console.log(
-      `${new Date().toISOString()} ${info.method} ${info.url} → ${info.statusCode ?? '???'} ${flag}${fix} ${info.durationMs}ms`,
+      `${new Date().toISOString()} ${info.method} ${info.url} → ${info.statusCode ?? '???'} ${flag}${reqFix}${fix}${rewritten} ${info.durationMs}ms`,
     );
   };
 
@@ -99,7 +98,10 @@ export function startServer(
  */
 export function waitForListening(server: Server, timeoutMs = 2000): Promise<void> {
   return new Promise((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error('server did not start listening in time')), timeoutMs);
+    const t = setTimeout(
+      () => reject(new Error('server did not start listening in time')),
+      timeoutMs,
+    );
     const check = () => {
       if (server.listening) {
         clearTimeout(t);

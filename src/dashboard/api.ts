@@ -61,18 +61,31 @@ export async function handleDashboardRoute(
       return ok(res, { rules: deps.config.rules });
     }
     if (path === 'settings' && method === 'GET') {
-      return ok(res, { responseFixes: deps.config.responseFixes });
+      return ok(res, {
+        requestFixes: deps.config.requestFixes,
+        responseFixes: deps.config.responseFixes,
+      });
     }
     if (path === 'settings' && method === 'POST') {
       const body = await readJson(req);
+      const rq = body?.requestFixes ?? {};
       const rf = body?.responseFixes ?? {};
       // Merge known boolean flags only; unknown keys are ignored so older
       // dashboards can't wedge unknown state into the config file.
+      if (typeof rq.fixEmptyContentMessages === 'boolean') {
+        deps.config.requestFixes.fixEmptyContentMessages = rq.fixEmptyContentMessages;
+      }
       if (typeof rf.stripEmptyDeltaFields === 'boolean') {
         deps.config.responseFixes.stripEmptyDeltaFields = rf.stripEmptyDeltaFields;
       }
+      if (typeof rf.failFastDeterministicErrors === 'boolean') {
+        deps.config.responseFixes.failFastDeterministicErrors = rf.failFastDeterministicErrors;
+      }
       deps.persist?.(deps.config);
-      return ok(res, { responseFixes: deps.config.responseFixes });
+      return ok(res, {
+        requestFixes: deps.config.requestFixes,
+        responseFixes: deps.config.responseFixes,
+      });
     }
     if (path === 'rules' && method === 'PUT') {
       const body = await readJson(req);

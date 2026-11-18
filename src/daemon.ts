@@ -189,10 +189,7 @@ export interface DaemonReply {
  * IPC message, print the banner, and return the exit code the foreground
  * process should use. The child keeps running after we exit.
  */
-export async function runDaemonParent(
-  cliScript: string,
-  cliArgs: string[],
-): Promise<number> {
+export async function runDaemonParent(cliScript: string, cliArgs: string[]): Promise<number> {
   const existing = readDaemonState();
   if (existing && pidAlive(existing.pid)) {
     const bind = `http://${existing.host}:${existing.port}`;

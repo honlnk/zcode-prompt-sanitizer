@@ -248,6 +248,20 @@ export function dashboardHtml(version: string): string {
   <section class="stats" id="stats"></section>
   <section>
     <div class="toolbar">
+      <h2>Request Fixes</h2>
+    </div>
+    <div class="card">
+      <div class="fix-row">
+        <div class="toggle" id="fixEmptyContent"></div>
+        <div>
+          <div class="fix-title">Fix empty-content messages<code>fixEmptyContentMessages</code></div>
+          <div class="rule-desc">转发前清洗 <code>messages</code> 里 content 为空的消息：纯工具调用轮（<code>content:null</code> + <code>tool_calls</code>）与空 <code>tool</code> 消息填入占位符保住配对，彻底空白的 assistant/system/user 消息直接删除。修复严格上游（腾讯 WorkBuddy，错误 11151 <code>a message has empty content</code>）对整单请求的拒收——宽容上游攒下的历史一换 provider 就撞墙。即时生效并写入配置文件，默认开启。</div>
+        </div>
+      </div>
+    </div>
+  </section>
+  <section>
+    <div class="toolbar">
       <h2>Response Fixes</h2>
     </div>
     <div class="card">
@@ -256,6 +270,13 @@ export function dashboardHtml(version: string): string {
         <div>
           <div class="fix-title">Strip empty delta fields<code>stripEmptyDeltaFields</code></div>
           <div class="rule-desc">移除 SSE chunk 中的空占位字段（<code>content:""</code> / <code>reasoning_content:""</code> / <code>tool_calls:[]</code> / 空 <code>function_call</code> / 空 <code>finish_reason</code>）。修复腾讯系模型（hy 系列）在 ZCode 里一个思考阶段被拆成几十段"思考"的问题——元凶是每个 chunk 都带的 <code>tool_calls:[]</code> 会让客户端反复关闭思考块。即时生效并写入配置文件，默认关闭。</div>
+        </div>
+      </div>
+      <div class="fix-row">
+        <div class="toggle" id="fixFailFast"></div>
+        <div>
+          <div class="fix-title">Fail fast on deterministic errors<code>failFastDeterministicErrors</code></div>
+          <div class="rule-desc">上游 5xx JSON 错误体命中确定性签名（当前为 11151 / <code>empty content</code>）时，改写为不可重试的 400 回给客户端并附 <code>x-zps-rewritten-status</code> 头。修复账号池把上游 400 包成 503 后，客户端把它当"暂时不可用"退避重试数分钟、烧穿账号池的问题——这类错误重试一万次也不会成功。真正暂时性的错误（无可用账号、队列满、限流）不会命中。即时生效并写入配置文件，默认开启。</div>
         </div>
       </div>
     </div>
@@ -348,8 +369,12 @@ function ruleRow(r) {
 }
 async function loadSettings() {
   const s = await jget('/settings');
+  const reqOn = !!(s.requestFixes && s.requestFixes.fixEmptyContentMessages);
+  $('fixEmptyContent').className = 'toggle' + (reqOn ? ' on' : '');
   const on = !!(s.responseFixes && s.responseFixes.stripEmptyDeltaFields);
   $('fixStrip').className = 'toggle' + (on ? ' on' : '');
+  const ff = !!(s.responseFixes && s.responseFixes.failFastDeterministicErrors);
+  $('fixFailFast').className = 'toggle' + (ff ? ' on' : '');
 }
 async function refresh() {
   const s = await jget('/status');
@@ -364,6 +389,24 @@ document.addEventListener('click', async (e) => {
     const on = !t.classList.contains('on');
     try {
       await jsend('POST', '/settings', { responseFixes: { stripEmptyDeltaFields: on } });
+      await loadSettings();
+      toast(on ? 'Fix enabled' : 'Fix disabled');
+    } catch(err) { toast(err.message, true); }
+    return;
+  }
+  if (t.id === 'fixEmptyContent') {
+    const on = !t.classList.contains('on');
+    try {
+      await jsend('POST', '/settings', { requestFixes: { fixEmptyContentMessages: on } });
+      await loadSettings();
+      toast(on ? 'Fix enabled' : 'Fix disabled');
+    } catch(err) { toast(err.message, true); }
+    return;
+  }
+  if (t.id === 'fixFailFast') {
+    const on = !t.classList.contains('on');
+    try {
+      await jsend('POST', '/settings', { responseFixes: { failFastDeterministicErrors: on } });
       await loadSettings();
       toast(on ? 'Fix enabled' : 'Fix disabled');
     } catch(err) { toast(err.message, true); }
